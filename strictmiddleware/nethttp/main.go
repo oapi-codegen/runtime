@@ -5,6 +5,6 @@ import (
 	"net/http"
 )
 
-type StrictHttpHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (response interface{}, err error)
+type StrictHTTPHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (response interface{}, err error)
 
-type StrictHttpMiddlewareFunc func(f StrictHttpHandlerFunc, operationID string) StrictHttpHandlerFunc
+type StrictHTTPMiddlewareFunc func(f StrictHTTPHandlerFunc, operationID string) StrictHTTPHandlerFunc

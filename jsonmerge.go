@@ -6,9 +6,9 @@ import (
 	"github.com/apapsch/go-jsonmerge/v2"
 )
 
-// JsonMerge merges two JSON representation into a single object. `data` is the
+// JSONMerge merges two JSON representation into a single object. `data` is the
 // existing representation and `patch` is the new data to be merged in
-func JsonMerge(data, patch json.RawMessage) (json.RawMessage, error) {
+func JSONMerge(data, patch json.RawMessage) (json.RawMessage, error) {
 	merger := jsonmerge.Merger{
 		CopyNonexistent: true,
 	}
