@@ -20,6 +20,7 @@ type RequestBodyEncoding struct {
 	ContentType string
 	Style       string
 	Explode     *bool
+	Required    *bool
 }
 
 func BindMultipart(ptr interface{}, reader multipart.Reader) error {
@@ -64,7 +65,11 @@ func BindForm(ptr interface{}, form map[string][]string, files map[string][]*mul
 				if encoding.Explode != nil {
 					explode = *encoding.Explode
 				}
-				if err := BindStyledParameterWithLocation(encoding.Style, explode, tag, ParamLocationUndefined, value, field.Addr().Interface()); err != nil {
+				var required bool
+				if encoding.Required != nil {
+					required = *encoding.Required
+				}
+				if err := BindStyledParameterWithLocation(encoding.Style, explode, required, tag, ParamLocationUndefined, value, field.Addr().Interface()); err != nil {
 					return err
 				}
 			}

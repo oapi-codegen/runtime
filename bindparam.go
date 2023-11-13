@@ -31,19 +31,21 @@ import (
 // https://swagger.io/docs/specification/serialization/
 // It is a backward compatible function to clients generated with codegen
 // up to version v1.5.5. v1.5.6+ calls the function below.
-func BindStyledParameter(style string, explode bool, paramName string,
+func BindStyledParameter(style string, explode bool, required bool, paramName string,
 	value string, dest interface{}) error {
-	return BindStyledParameterWithLocation(style, explode, paramName, ParamLocationUndefined, value, dest)
+	return BindStyledParameterWithLocation(style, explode, required, paramName, ParamLocationUndefined, value, dest)
 }
 
 // BindStyledParameterWithLocation binds a parameter as described in the Path Parameters
 // section here to a Go object:
 // https://swagger.io/docs/specification/serialization/
-func BindStyledParameterWithLocation(style string, explode bool, paramName string,
+func BindStyledParameterWithLocation(style string, explode bool, required bool, paramName string,
 	paramLocation ParamLocation, value string, dest interface{}) error {
 
-	if value == "" {
-		return fmt.Errorf("parameter '%s' is empty, can't bind its value", paramName)
+	if required {
+		if value == "" {
+			return fmt.Errorf("parameter '%s' is empty, can't bind its value", paramName)
+		}
 	}
 
 	// Based on the location of the parameter, we need to unescape it properly.
