@@ -6,14 +6,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestJsonMerge(t *testing.T) {
+func TestJSONMerge(t *testing.T) {
 	t.Run("when object", func(t *testing.T) {
 		t.Run("Merges properties defined in both objects", func(t *testing.T) {
 			data := `{"foo": 1}`
 			patch := `{"foo": null}`
 			expected := `{"foo":null}`
 
-			actual, err := JsonMerge([]byte(data), []byte(patch))
+			actual, err := JSONMerge([]byte(data), []byte(patch))
 			assert.NoError(t, err)
 			assert.Equal(t, expected, string(actual))
 		})
@@ -23,7 +23,7 @@ func TestJsonMerge(t *testing.T) {
 			patch := `{"source":"merge-me"}`
 			expected := `{"source":"merge-me"}`
 
-			actual, err := JsonMerge([]byte(data), []byte(patch))
+			actual, err := JSONMerge([]byte(data), []byte(patch))
 			assert.NoError(t, err)
 			assert.Equal(t, expected, string(actual))
 		})
@@ -33,7 +33,7 @@ func TestJsonMerge(t *testing.T) {
 			patch := `{"channel":{"id":1}}`
 			expected := `{"channel":{"id":1,"status":"valid"}}`
 
-			actual, err := JsonMerge([]byte(data), []byte(patch))
+			actual, err := JSONMerge([]byte(data), []byte(patch))
 			assert.NoError(t, err)
 			assert.Equal(t, expected, string(actual))
 		})
@@ -43,7 +43,7 @@ func TestJsonMerge(t *testing.T) {
 			patch := `{}`
 			expected := `{}`
 
-			actual, err := JsonMerge([]byte(data), []byte(patch))
+			actual, err := JSONMerge([]byte(data), []byte(patch))
 			assert.NoError(t, err)
 			assert.Equal(t, expected, string(actual))
 		})
@@ -52,7 +52,7 @@ func TestJsonMerge(t *testing.T) {
 			patch := `{"foo":"bar"}`
 			expected := `{"foo":"bar"}`
 
-			actual, err := JsonMerge(nil, []byte(patch))
+			actual, err := JSONMerge(nil, []byte(patch))
 			assert.NoError(t, err)
 			assert.Equal(t, expected, string(actual))
 		})
@@ -61,7 +61,7 @@ func TestJsonMerge(t *testing.T) {
 			data := `{"foo":"bar"}`
 			expected := `{"foo":"bar"}`
 
-			actual, err := JsonMerge([]byte(data), nil)
+			actual, err := JSONMerge([]byte(data), nil)
 			assert.NoError(t, err)
 			assert.Equal(t, expected, string(actual))
 		})
@@ -72,7 +72,7 @@ func TestJsonMerge(t *testing.T) {
 			patch := `[{"foo": null}]`
 			expected := `[{"foo":1}]`
 
-			actual, err := JsonMerge([]byte(data), []byte(patch))
+			actual, err := JSONMerge([]byte(data), []byte(patch))
 			assert.NoError(t, err)
 			assert.Equal(t, expected, string(actual))
 		})
