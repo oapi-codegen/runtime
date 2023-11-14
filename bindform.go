@@ -69,7 +69,11 @@ func BindForm(ptr interface{}, form map[string][]string, files map[string][]*mul
 				if encoding.Required != nil {
 					required = *encoding.Required
 				}
-				if err := BindStyledParameterWithLocation(encoding.Style, explode, required, tag, ParamLocationUndefined, value, field.Addr().Interface()); err != nil {
+				if err := BindStyledParameterWithOptions(encoding.Style, tag, value, field.Addr().Interface(), BindStyledParameterOptions{
+					ParamLocation: ParamLocationUndefined,
+					Explode:       explode,
+					Required:      required,
+				}); err != nil {
 					return err
 				}
 			}

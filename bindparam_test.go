@@ -21,9 +21,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/oapi-codegen/runtime/types"
 )
 
 // MockBinder is just an independent version of Binder that has the Bind implemented
@@ -493,8 +494,12 @@ func TestBindStyledParameterWithLocation(t *testing.T) {
 	expectedBig := big.NewInt(12345678910)
 
 	var dstBigNumber big.Int
-	err := BindStyledParameterWithLocation("simple", false, false, "id", ParamLocationUndefined,
-		"12345678910", &dstBigNumber)
+
+	err := BindStyledParameterWithOptions("simple", "id", "12345678910", &dstBigNumber, BindStyledParameterOptions{
+		ParamLocation: ParamLocationUndefined,
+		Explode:       false,
+		Required:      false,
+	})
 	assert.NoError(t, err)
 	assert.Equal(t, *expectedBig, dstBigNumber)
 }
