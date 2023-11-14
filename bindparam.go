@@ -31,15 +31,21 @@ import (
 // https://swagger.io/docs/specification/serialization/
 // It is a backward compatible function to clients generated with codegen
 // up to version v1.5.5. v1.5.6+ calls the function below.
-func BindStyledParameter(style string, explode bool, required bool, paramName string,
+// Deprecated: BindStyledParameter is deprecated.
+func BindStyledParameter(style string, explode bool, paramName string,
 	value string, dest interface{}) error {
-	return BindStyledParameterWithLocation(style, explode, paramName, ParamLocationUndefined, value, dest)
+	return BindStyledParameterWithOptions(style, paramName, value, dest, BindStyledParameterOptions{
+		ParamLocation: ParamLocationUndefined,
+		Explode:       explode,
+		Required:      true,
+	})
 }
 
 // BindStyledParameterWithLocation binds a parameter as described in the Path Parameters
 // section here to a Go object:
 // https://swagger.io/docs/specification/serialization/
 // This is a compatibility function which is used by oapi-codegen v2.0.0 and earlier.
+// Deprecated: BindStyledParameterWithLocation is deprecated.
 func BindStyledParameterWithLocation(style string, explode bool, paramName string,
 	paramLocation ParamLocation, value string, dest interface{}) error {
 	return BindStyledParameterWithOptions(style, paramName, value, dest, BindStyledParameterOptions{
