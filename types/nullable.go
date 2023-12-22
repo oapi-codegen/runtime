@@ -1,31 +1,47 @@
 package types
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+)
 
-// Optional type which can help distinguish between if a value was explicitly
-// provided in JSON or not
-type Optional[T any] struct {
-	// Value is the actual value of the field.
+// nullBytes is a JSON null literal
+var nullBytes = []byte("null")
+
+// Nullable type which can help distinguish between if a value was explicitly
+// provided `null` in JSON or not
+type Nullable[T any] struct {
 	Value T
-	// Defined indicates that the field was provided in JSON if it is true.
-	// If a field is not provided in JSON, then `Defined` is false and `Value`
-	// contains the `zero-value` of the field type e.g "" for string,
-	// 0 for int, nil for pointer etc
-	Defined bool
+	Null  bool
 }
 
 // UnmarshalJSON implements the Unmarshaler interface.
-func (t *Optional[T]) UnmarshalJSON(data []byte) error {
-	t.Defined = true
-	return json.Unmarshal(data, &t.Value)
+func (t *Nullable[T]) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(data, nullBytes) {
+		t.Null = true
+		return nil
+	}
+	if err := json.Unmarshal(data, &t.Value); err != nil {
+		return fmt.Errorf("couldn't unmarshal JSON: %w", err)
+	}
+	t.Null = false
+	return nil
 }
 
 // MarshalJSON implements the  Marshaler interface.
-func (t Optional[T]) MarshalJSON() ([]byte, error) {
+func (t Nullable[T]) MarshalJSON() ([]byte, error) {
+	if t.IsNull() {
+		return []byte("null"), nil
+	}
 	return json.Marshal(t.Value)
 }
 
-// IsDefined returns true if the value is explicitly provided in json
-func (t *Optional[T]) IsDefined() bool {
-	return t.Defined
+// IsNull returns true if the value is explicitly provided `null` in json
+func (t *Nullable[T]) IsNull() bool {
+	return t.Null
+}
+
+func (t *Nullable[T]) Get() (value T, null bool) {
+	return t.Value, t.IsNull()
 }
