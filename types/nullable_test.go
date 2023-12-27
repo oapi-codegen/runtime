@@ -8,7 +8,6 @@ import (
 )
 
 type SimpleString struct {
-	// cannot decide if it was provided with `null` value in json
 	Name Nullable[string] `json:"name"`
 }
 
@@ -61,7 +60,6 @@ func TestSimpleString(t *testing.T) {
 }
 
 type SimpleInt struct {
-	// cannot decide if it was provided with `null` value in json
 	ReplicaCount Nullable[int] `json:"replicaCount"`
 }
 
