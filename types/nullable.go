@@ -13,11 +13,13 @@ var nullBytes = []byte("null")
 // provided `null` in JSON or not
 type Nullable[T any] struct {
 	Value T
+	Set   bool
 	Null  bool
 }
 
 // UnmarshalJSON implements the Unmarshaler interface.
 func (t *Nullable[T]) UnmarshalJSON(data []byte) error {
+	t.Set = true
 	if bytes.Equal(data, nullBytes) {
 		t.Null = true
 		return nil
@@ -32,7 +34,7 @@ func (t *Nullable[T]) UnmarshalJSON(data []byte) error {
 // MarshalJSON implements the  Marshaler interface.
 func (t Nullable[T]) MarshalJSON() ([]byte, error) {
 	if t.IsNull() {
-		return []byte("null"), nil
+		return nullBytes, nil
 	}
 	return json.Marshal(t.Value)
 }
@@ -40,6 +42,11 @@ func (t Nullable[T]) MarshalJSON() ([]byte, error) {
 // IsNull returns true if the value is explicitly provided `null` in json
 func (t *Nullable[T]) IsNull() bool {
 	return t.Null
+}
+
+// IsSet returns true if the value is provided in json
+func (t *Nullable[T]) IsSet() bool {
+	return t.Set
 }
 
 func (t *Nullable[T]) Get() (value T, null bool) {
