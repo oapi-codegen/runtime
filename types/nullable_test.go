@@ -3,9 +3,157 @@ package types
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func ExampleNullable_marshal() {
+	obj := struct {
+		ID Nullable[int] `json:"id"`
+	}{}
+
+	// when it's not set
+	b, err := json.Marshal(obj)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	fmt.Printf(`JSON: %s`+"\n", b)
+	fmt.Println("---")
+
+	// when it's set explicitly to nil
+	obj.ID.Value = nil
+	obj.ID.Set = true
+
+	b, err = json.Marshal(obj)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	fmt.Printf(`JSON: %s`+"\n", b)
+	fmt.Println("---")
+
+	// when it's set explicitly to the zero value
+	var v int
+	obj.ID.Value = &v
+	obj.ID.Set = true
+
+	b, err = json.Marshal(obj)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	fmt.Printf(`JSON: %s`+"\n", b)
+	fmt.Println("---")
+
+	// when it's set explicitly to a specific value
+	v = 12345
+	obj.ID.Value = &v
+	obj.ID.Set = true
+
+	b, err = json.Marshal(obj)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	fmt.Printf(`JSON: %s`+"\n", b)
+	fmt.Println("---")
+
+	// Output:
+	// JSON: {}
+	// ---
+	// JSON: {"id":null}
+	// ---
+	// JSON: {"id":0}
+	// ---
+	// JSON: {"id":12345}
+	// ---
+}
+
+func ExampleNullable_unmarshal() {
+	obj := struct {
+		Name Nullable[string] `json:"name"`
+	}{}
+
+	// when it's not set
+	err := json.Unmarshal([]byte(`
+		{
+		}
+		`), &obj)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	fmt.Printf("obj.Name.Set: %v\n", obj.Name.Set)
+	fmt.Printf("obj.Name.Value: %v\n", obj.Name.Value)
+	fmt.Println("---")
+
+	// when it's set explicitly to nil
+	err = json.Unmarshal([]byte(`
+		{
+		"name": null
+		}
+		`), &obj)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	fmt.Printf("obj.Name.Set: %v\n", obj.Name.Set)
+	fmt.Printf("obj.Name.Value: %v\n", obj.Name.Value)
+	fmt.Println("---")
+
+	// when it's set explicitly to the zero value
+	err = json.Unmarshal([]byte(`
+		{
+		"name": ""
+		}
+		`), &obj)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	fmt.Printf("obj.Name.Set: %v\n", obj.Name.Set)
+	if obj.Name.Value == nil {
+		fmt.Println("Error: expected obj.Name.Value to have a value, but was <nil>")
+		return
+	}
+	fmt.Printf("obj.Name.Value: %#v\n", *obj.Name.Value)
+	fmt.Println("---")
+
+	// when it's set explicitly to a specific value
+	err = json.Unmarshal([]byte(`
+		{
+		"name": "foo"
+		}
+		`), &obj)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	fmt.Printf("obj.Name.Set: %v\n", obj.Name.Set)
+	if obj.Name.Value == nil {
+		fmt.Println("Error: expected obj.Name.Value to have a value, but was <nil>")
+		return
+	}
+	fmt.Printf("obj.Name.Value: %#v\n", *obj.Name.Value)
+	fmt.Println("---")
+
+	// Output:
+	// obj.Name.Set: false
+	// obj.Name.Value: <nil>
+	// ---
+	// obj.Name.Set: true
+	// obj.Name.Value: <nil>
+	// ---
+	// obj.Name.Set: true
+	// obj.Name.Value: ""
+	// ---
+	// obj.Name.Set: true
+	// obj.Name.Value: "foo"
+	// ---
+}
 
 type SimpleString struct {
 	Name Nullable[string] `json:"name"`
@@ -53,7 +201,7 @@ func TestSimpleString(t *testing.T) {
 			err := json.Unmarshal(tt.jsonInput, &obj)
 			assert.NoError(t, err)
 			assert.Equalf(t, tt.wantNull, obj.Name.IsNull(), "IsNull()")
-			assert.Equalf(t, tt.wantSet, obj.Name.IsSet(), "IsSet()")
+			assert.Equalf(t, tt.wantSet, obj.Name.Set, "Set")
 			fmt.Println(obj.Name.Get())
 		})
 	}
@@ -105,7 +253,7 @@ func TestSimpleInt(t *testing.T) {
 			err := json.Unmarshal(tt.jsonInput, &obj)
 			assert.NoError(t, err)
 			assert.Equalf(t, tt.wantNull, obj.ReplicaCount.IsNull(), "IsNull()")
-			assert.Equalf(t, tt.wantSet, obj.ReplicaCount.IsSet(), "IsSet()")
+			assert.Equalf(t, tt.wantSet, obj.ReplicaCount.Set, "Set")
 		})
 	}
 }
@@ -157,7 +305,7 @@ func TestSimplePointerInt(t *testing.T) {
 			err := json.Unmarshal(tt.jsonInput, &obj)
 			assert.NoError(t, err)
 			assert.Equalf(t, tt.wantNull, obj.ReplicaCount.IsNull(), "IsNull()")
-			assert.Equalf(t, tt.wantSet, obj.ReplicaCount.IsSet(), "IsSet()")
+			assert.Equalf(t, tt.wantSet, obj.ReplicaCount.Set, "Set")
 		})
 	}
 }
@@ -179,11 +327,14 @@ func TestMixed(t *testing.T) {
 			name:      "empty json input",
 			jsonInput: []byte(`{}`),
 			assert: func(obj TestComplex, t *testing.T) {
-				assert.Equalf(t, false, obj.SimpleInt.Value.ReplicaCount.IsSet(), "replica count should not be set")
+				require.NotNilf(t, obj.SimpleInt.Value, "NN")
+				require.NotNilf(t, obj.SimpleString.Value, "NN")
+				require.NotNilf(t, obj.StringList.Value, "NN")
+				assert.Equalf(t, false, obj.SimpleInt.Value.ReplicaCount.Set, "replica count should not be set")
 				assert.Equalf(t, false, obj.SimpleInt.Value.ReplicaCount.IsNull(), "replica count should not be null")
-				assert.Equalf(t, false, obj.SimpleString.Value.Name.IsSet(), "name should not be set")
+				assert.Equalf(t, false, obj.SimpleString.Value.Name.Set, "name should not be set")
 				assert.Equalf(t, false, obj.SimpleString.Value.Name.IsNull(), "name should not be null")
-				assert.Equalf(t, false, obj.StringList.IsSet(), "string list should not be set")
+				assert.Equalf(t, false, obj.StringList.Set, "string list should not be set")
 				assert.Equalf(t, false, obj.StringList.IsNull(), "string list should not be null")
 			},
 		},
@@ -192,13 +343,15 @@ func TestMixed(t *testing.T) {
 			name:      "replica count having non null value",
 			jsonInput: []byte(`{"simple_int":{"replicaCount":1}}`),
 			assert: func(obj TestComplex, t *testing.T) {
+				require.NotNilf(t, obj.SimpleInt.Value, "NN")
+				require.NotNilf(t, obj.SimpleString.Value, "NN")
 				assert.Equalf(t, false, obj.SimpleInt.Value.ReplicaCount.IsNull(), "replica count should NOT be null")
-				assert.Equalf(t, true, obj.SimpleInt.Value.ReplicaCount.IsSet(), "replica count should be set")
-				assert.Equalf(t, false, obj.SimpleString.Value.Name.IsSet(), "name should NOT be set")
+				assert.Equalf(t, true, obj.SimpleInt.Value.ReplicaCount.Set, "replica count should be set")
+				assert.Equalf(t, false, obj.SimpleString.Value.Name.Set, "name should NOT be set")
 				assert.Equalf(t, false, obj.SimpleString.Value.Name.IsNull(), "name should NOT be null")
-				gotValue, isNull := obj.SimpleInt.Value.ReplicaCount.Get()
-				assert.Equalf(t, false, isNull, "replica count should NOT be null")
-				assert.Equalf(t, 1, gotValue, "replica count should be 1")
+				gotValue, isSet := obj.SimpleInt.Value.ReplicaCount.Get()
+				assert.Equalf(t, true, isSet, "replica count should NOT be null")
+				assert.Equalf(t, 1, *gotValue, "replica count should be 1")
 			},
 		},
 
@@ -206,7 +359,8 @@ func TestMixed(t *testing.T) {
 			name:      "string list having null value",
 			jsonInput: []byte(`{"string_list": null}`),
 			assert: func(obj TestComplex, t *testing.T) {
-				assert.Equalf(t, true, obj.StringList.IsSet(), "string_list should be set")
+				require.NotNilf(t, obj.StringList.Value, "NN")
+				assert.Equalf(t, true, obj.StringList.Set, "string_list should be set")
 				assert.Equalf(t, true, obj.StringList.IsNull(), "string_list should be null")
 			},
 		},
@@ -215,7 +369,7 @@ func TestMixed(t *testing.T) {
 			name:      "string list having non null value",
 			jsonInput: []byte(`{"string_list": ["foo", "bar"]}`),
 			assert: func(obj TestComplex, t *testing.T) {
-				assert.Equalf(t, true, obj.StringList.IsSet(), "string_list should be set")
+				assert.Equalf(t, true, obj.StringList.Set, "string_list should be set")
 				assert.Equalf(t, false, obj.StringList.IsNull(), "string_list should not be null")
 				gotStringList, isNull := obj.StringList.Get()
 				assert.Equalf(t, false, isNull, "string_list should not be null")
@@ -228,7 +382,7 @@ func TestMixed(t *testing.T) {
 			name:      "set string list having empty value",
 			jsonInput: []byte(`{"string_list":[]}`),
 			assert: func(obj TestComplex, t *testing.T) {
-				assert.Equalf(t, true, obj.StringList.IsSet(), "string_list should be set")
+				assert.Equalf(t, true, obj.StringList.Set, "string_list should be set")
 				assert.Equalf(t, false, obj.StringList.IsNull(), "string_list should not be null")
 				gotStringList, isNull := obj.StringList.Get()
 				assert.Equalf(t, false, isNull, "string_list should not be null")
@@ -238,7 +392,7 @@ func TestMixed(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t1 *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			var obj TestComplex
 			err := json.Unmarshal(tt.jsonInput, &obj)
 			assert.NoError(t, err)
