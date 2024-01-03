@@ -10,7 +10,7 @@ jobs:
       matrix:
         # strategy is used to allow us to pin to a specific Go version, or use the version available in our `go.mod`
         strategy: ['go-version']
-        version: [1.21]
+        version: ['1.20',1.21]
         include:
           # pick up the Go version from the `go.mod`
           - strategy: 'go-version-file'
