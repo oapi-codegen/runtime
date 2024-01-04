@@ -9,6 +9,58 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+/* ...... */
+// Adapted from https://www.calhoun.io/how-to-determine-if-a-json-key-has-been-set-to-null-or-not-provided/
+type Nullable_[T any] struct {
+	// Value contains the underlying value of the field. If `Set` is true, and `Null` is false, **??**
+	Value *T
+	// Set will be true if the field was sent
+	Set bool
+	// Valid will be true if the value is a valid type - either a value of T or as an explicit `null`
+	Valid bool
+}
+
+func (t *Nullable_[T]) UnmarshalJSON(data []byte) error {
+	// If this method is called, there was a value explicitly sent, which was either <nil> or a value of `T`
+	t.Set = true
+
+	// we received an explicit value of null
+	if string(data) == "null" {
+		// which is deemed valid, because we allow either <nil> or a value of `T`
+		t.Valid = true
+		t.Value = nil
+		return nil
+	}
+
+	// we received a value of `T`
+	var temp T
+	if err := json.Unmarshal(data, &temp); err != nil {
+		return err
+	}
+	t.Value = &temp
+	t.Valid = true
+	return nil
+}
+
+/* </adapted from https://www.calhoun.io/how-to-determine-if-a-json-key-has-been-set-to-null-or-not-provided/> */
+/* ...... */
+
+func (t *Nullable_[T]) IsSet() bool {
+	if t == nil {
+		return false
+	}
+
+	return t.Set
+}
+
+func (t *Nullable_[T]) IsValid() bool {
+	if t == nil {
+		return false
+	}
+
+	return t.Valid
+}
+
 func ExampleNullable_foo() {
 	obj := struct {
 		ID *Nullable[int] `json:"id,omitempty"`
@@ -16,6 +68,158 @@ func ExampleNullable_foo() {
 	fmt.Printf("obj.ID.IsNull(): %v\n", obj.ID.IsNull())
 	fmt.Printf("obj.ID.IsSet(): %v\n", obj.ID.IsSet())
 	// Output:
+}
+
+//	func (t *Nullable_[T]) IsSet() bool {
+//		if t == nil {
+//			return false
+//		}
+//		return t.Set
+//	}
+// func (t *Nullable_[T]) IsValid() bool {
+// 	if t == nil {
+// 		return false
+// 	}
+// 	return t.Valid
+// }
+
+// 	return t.Value == nil
+// }
+
+func TestNullable___foo(t *testing.T) {
+	obj := struct {
+		ID Nullable_[int] `json:"id"`
+	}{}
+
+	// when unset
+	obj.ID = Nullable_[int]{}
+	// assert.False(t, obj.ID.IsSet())
+	// assert.False(t, obj.ID.IsNull())
+	// assert.False(t, obj.ID.Valid)
+
+	// when empty body
+	obj.ID = Nullable_[int]{}
+	err := json.Unmarshal([]byte("{}"), &obj)
+	require.NoError(t, err)
+	fmt.Printf("empty\t%v: %v %v\n", obj.ID, obj.ID.IsSet(), obj.ID.IsValid())
+
+	// assert.False(t, obj.ID.IsSet())
+	// assert.False(t, obj.ID.IsNull())
+	// fmt.Printf("obj: %v\n", obj)
+	assert.False(t, obj.ID.IsValid())
+
+	// when explicit null body
+	obj.ID = Nullable_[int]{}
+	err = json.Unmarshal([]byte(`{"id": null}`), &obj)
+	require.NoError(t, err)
+	fmt.Printf("null\t%v: %v %v\n", obj.ID, obj.ID.IsSet(), obj.ID.IsValid())
+
+	// fmt.Printf("obj.ID: %#v\n", obj.ID)
+	// assert.True(t, obj.ID.IsSet())
+	// assert.True(t, obj.ID.IsNull())
+	assert.False(t, obj.ID.IsValid())
+
+	// when explicit zero value
+	obj.ID = Nullable_[int]{}
+	err = json.Unmarshal([]byte(`{"id": 0}`), &obj)
+	require.NoError(t, err)
+	fmt.Printf("zero\t%v: %v %v\n", obj.ID, obj.ID.IsSet(), obj.ID.IsValid())
+	if assert.NotNil(t, obj.ID.Value) {
+		fmt.Printf("obj.ID.Value: %v\n", *obj.ID.Value)
+	}
+
+	// assert.True(t, obj.ID.IsSet())
+	// assert.False(t, obj.ID.IsNull())
+	if assert.NotNil(t, obj.ID.Value) {
+		assert.Equal(t, 0, *obj.ID.Value)
+	}
+	assert.True(t, obj.ID.IsValid())
+
+	// when explicit value
+	obj.ID = Nullable_[int]{}
+	err = json.Unmarshal([]byte(`{"id": 1230}`), &obj)
+	require.NoError(t, err)
+	fmt.Printf("val\t%v: %v %v\n", obj.ID, obj.ID.IsSet(), obj.ID.IsValid())
+	if assert.NotNil(t, obj.ID.Value) {
+		fmt.Printf("obj.ID.Value: %v\n", *obj.ID.Value)
+	}
+
+	// assert.True(t, obj.ID.IsSet())
+	// assert.False(t, obj.ID.IsNull())
+	if assert.NotNil(t, obj.ID.Value) {
+		assert.Equal(t, 1230, *obj.ID.Value)
+	}
+	assert.True(t, obj.ID.Valid)
+}
+
+func TestNullable___food(t *testing.T) {
+	obj := struct {
+		ID *Nullable[int] `json:"id,omitempty"`
+	}{}
+
+	// when unset
+	obj.ID = nil
+	assert.False(t, obj.ID.IsSet())
+	assert.False(t, obj.ID.IsNull())
+
+	// when empty body
+	obj.ID = nil
+	err := json.Unmarshal([]byte("{}"), &obj)
+	require.NoError(t, err)
+
+	assert.False(t, obj.ID.IsSet())
+	assert.False(t, obj.ID.IsNull())
+
+	// when explicit null body
+	obj.ID = nil
+	err = json.Unmarshal([]byte(`{"id": null}`), &obj)
+	require.NoError(t, err)
+
+	fmt.Printf("obj.ID: %#v\n", obj.ID)
+	assert.True(t, obj.ID.IsSet())
+	assert.True(t, obj.ID.IsNull())
+
+	// when explicit zero value
+	obj.ID = nil
+	err = json.Unmarshal([]byte(`{"id": 0}`), &obj)
+	require.NoError(t, err)
+
+	assert.True(t, obj.ID.IsSet())
+	assert.False(t, obj.ID.IsNull())
+	if assert.NotNil(t, obj.ID.Value) {
+		assert.Equal(t, 0, *obj.ID.Value)
+	}
+
+	// when explicit value
+	obj.ID = nil
+	err = json.Unmarshal([]byte(`{"id": 1230}`), &obj)
+	require.NoError(t, err)
+
+	assert.True(t, obj.ID.IsSet())
+	assert.False(t, obj.ID.IsNull())
+	if assert.NotNil(t, obj.ID.Value) {
+		assert.Equal(t, 1230, *obj.ID.Value)
+	}
+}
+
+func TestNullable_UnmarshalJSON1(t *testing.T) {
+	jsonPayload := []byte(`{"replicaCount":null}`)
+	var obj SimpleInt
+	err := json.Unmarshal(jsonPayload, &obj)
+	require.NoError(t, err)
+	// This panics but expectation is -- it should print true
+	fmt.Println(obj.ReplicaCount.IsNull())
+	assert.True(t, obj.ReplicaCount.IsSet())
+	assert.True(t, obj.ReplicaCount.IsNull())
+
+	jsonPayload1 := []byte(`{}`)
+	var obj1 SimpleInt
+	err = json.Unmarshal(jsonPayload1, &obj1)
+	require.NoError(t, err)
+	// This panics but expectation is -- it should print false
+	fmt.Println(obj1.ReplicaCount.IsNull())
+	assert.False(t, obj1.ReplicaCount.IsNull())
+	assert.False(t, obj1.ReplicaCount.IsSet())
 }
 
 func ExampleNullable_marshal() {
@@ -218,7 +422,7 @@ func TestSimpleString(t *testing.T) {
 }
 
 type SimpleInt struct {
-	ReplicaCount Nullable[int] `json:"replicaCount"`
+	ReplicaCount *Nullable[int] `json:"replicaCount,omitempty"`
 }
 
 func TestSimpleInt(t *testing.T) {

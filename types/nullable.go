@@ -30,6 +30,7 @@ func (t *Nullable[T]) IsSet() bool {
 
 // UnmarshalJSON implements the Unmarshaler interface.
 func (t *Nullable[T]) UnmarshalJSON(data []byte) error {
+	fmt.Println(data)
 	t.Set = true
 	if bytes.Equal(data, nullBytes) {
 		// t.Null = true
@@ -71,7 +72,7 @@ func (t Nullable[T]) MarshalJSON() ([]byte, error) {
 // IsNull returns true if the value is explicitly provided `null` in json
 func (t *Nullable[T]) IsNull() bool {
 	if t == nil {
-		return true
+		return false
 	}
 
 	return t.Value == nil
