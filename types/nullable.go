@@ -18,6 +18,16 @@ type Nullable[T any] struct {
 	Set bool
 }
 
+// Worst case we would have Unmarshal work correctly, and Marshal be broken
+// https://stackoverflow.com/questions/70025330/how-to-allow-omitempty-only-unmarshal-and-not-when-marshal
+
+func (t *Nullable[T]) IsSet() bool {
+	if t == nil {
+		return false
+	}
+	return t.Set
+}
+
 // UnmarshalJSON implements the Unmarshaler interface.
 func (t *Nullable[T]) UnmarshalJSON(data []byte) error {
 	t.Set = true
@@ -60,6 +70,10 @@ func (t Nullable[T]) MarshalJSON() ([]byte, error) {
 
 // IsNull returns true if the value is explicitly provided `null` in json
 func (t *Nullable[T]) IsNull() bool {
+	if t == nil {
+		return true
+	}
+
 	return t.Value == nil
 }
 

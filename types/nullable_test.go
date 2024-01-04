@@ -9,6 +9,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func ExampleNullable_foo() {
+	obj := struct {
+		ID *Nullable[int] `json:"id,omitempty"`
+	}{}
+	fmt.Printf("obj.ID.IsNull(): %v\n", obj.ID.IsNull())
+	fmt.Printf("obj.ID.IsSet(): %v\n", obj.ID.IsSet())
+	// Output:
+}
+
 func ExampleNullable_marshal() {
 	obj := struct {
 		ID *Nullable[int] `json:"id,omitempty"`
