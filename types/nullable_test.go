@@ -11,7 +11,7 @@ import (
 
 func ExampleNullable_marshal() {
 	obj := struct {
-		ID Nullable[int] `json:"id"`
+		ID *Nullable[int] `json:"id,omitempty"`
 	}{}
 
 	// when it's not set
@@ -24,6 +24,7 @@ func ExampleNullable_marshal() {
 	fmt.Println("---")
 
 	// when it's set explicitly to nil
+	obj.ID = &Nullable[int]{}
 	obj.ID.Value = nil
 	obj.ID.Set = true
 
