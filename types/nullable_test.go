@@ -471,6 +471,143 @@ func TestNullableRequired_UnmarshalJSON(t *testing.T) {
 	}
 }
 
+type ComplexNullable struct {
+	Config    nullable.Nullable[Config] `json:"config,omitempty"`
+	Location  nullable.Nullable[string] `json:"location"`
+	NodeCount nullable.Nullable[int]    `json:"node_count,omitempty"`
+}
+
+type Config struct {
+	CPU nullable.Nullable[string] `json:"cpu,omitempty"`
+	RAM nullable.Nullable[string] `json:"ram,omitempty"`
+}
+
+func TestComplexNullable(t *testing.T) {
+	type testCase struct {
+		name          string
+		jsonInput     []byte
+		assert        func(obj ComplexNullable, t *testing.T)
+		wantNull      bool
+		wantSpecified bool
+	}
+	tests := []testCase{
+		{
+			name:      "complex object: empty value",
+			jsonInput: []byte(`{}`),
+			assert: func(obj ComplexNullable, t *testing.T) {
+				t.Helper()
+
+				assert.Equalf(t, false, obj.Config.IsSpecified(), "config should not be set")
+				assert.Equalf(t, false, obj.Config.IsNull(), "config should not be null")
+
+				assert.Equalf(t, false, obj.NodeCount.IsSpecified(), "node count should not be set")
+				assert.Equalf(t, false, obj.NodeCount.IsNull(), "node count should not be null")
+
+				assert.Equalf(t, false, obj.Location.IsSpecified(), "location should not be set")
+				assert.Equalf(t, false, obj.Location.IsNull(), "location should not be null")
+			},
+		},
+		{
+			name:      "complex object: empty config value",
+			jsonInput: []byte(`{"config":{}}`),
+			assert: func(obj ComplexNullable, t *testing.T) {
+				t.Helper()
+
+				assert.Equalf(t, true, obj.Config.IsSpecified(), "config should be set")
+				assert.Equalf(t, false, obj.Config.IsNull(), "config should not be null")
+
+				gotConfig, err := obj.Config.Get()
+				require.NoError(t, err)
+
+				assert.Equalf(t, false, gotConfig.CPU.IsSpecified(), "cpu should not be set")
+				assert.Equalf(t, false, gotConfig.CPU.IsNull(), "cpu should not be null")
+
+				assert.Equalf(t, false, gotConfig.RAM.IsSpecified(), "ram should not be set")
+				assert.Equalf(t, false, gotConfig.RAM.IsNull(), "ram should not be null")
+			},
+		},
+
+		{
+			name:      "complex object: setting only cpu config value",
+			jsonInput: []byte(`{"config":{"cpu":"500"}}`),
+			assert: func(obj ComplexNullable, t *testing.T) {
+				t.Helper()
+
+				assert.Equalf(t, true, obj.Config.IsSpecified(), "config should be set")
+				assert.Equalf(t, false, obj.Config.IsNull(), "config should not be null")
+
+				gotConfig, err := obj.Config.Get()
+				require.NoError(t, err)
+
+				assert.Equalf(t, true, gotConfig.CPU.IsSpecified(), "cpu should be set")
+				assert.Equalf(t, false, gotConfig.CPU.IsNull(), "cpu should not be null")
+
+				assert.Equalf(t, false, gotConfig.RAM.IsSpecified(), "ram should not be set")
+				assert.Equalf(t, false, gotConfig.RAM.IsNull(), "ram should not be null")
+			},
+		},
+
+		{
+			name:      "complex object: setting only ram config value",
+			jsonInput: []byte(`{"config":{"ram":"1024"}}`),
+			assert: func(obj ComplexNullable, t *testing.T) {
+				t.Helper()
+
+				assert.Equalf(t, true, obj.Config.IsSpecified(), "config should be set")
+				assert.Equalf(t, false, obj.Config.IsNull(), "config should not be null")
+
+				gotConfig, err := obj.Config.Get()
+				require.NoError(t, err)
+
+				assert.Equalf(t, false, gotConfig.CPU.IsSpecified(), "cpu should not be set")
+				assert.Equalf(t, false, gotConfig.CPU.IsNull(), "cpu should not be null")
+
+				assert.Equalf(t, true, gotConfig.RAM.IsSpecified(), "ram should be set")
+				assert.Equalf(t, false, gotConfig.RAM.IsNull(), "ram should not be null")
+			},
+		},
+
+		{
+			name:      "complex object: setting config to null",
+			jsonInput: []byte(`{"config":null}`),
+			assert: func(obj ComplexNullable, t *testing.T) {
+				t.Helper()
+
+				assert.Equalf(t, true, obj.Config.IsSpecified(), "config should be set")
+				assert.Equalf(t, true, obj.Config.IsNull(), "config should not be null")
+			},
+		},
+
+		{
+			name:      "complex object: setting only cpu config to null",
+			jsonInput: []byte(`{"config":{"cpu":null}}`),
+			assert: func(obj ComplexNullable, t *testing.T) {
+				t.Helper()
+
+				assert.Equalf(t, true, obj.Config.IsSpecified(), "config should be set")
+				assert.Equalf(t, false, obj.Config.IsNull(), "config should not be null")
+
+				gotConfig, err := obj.Config.Get()
+				require.NoError(t, err)
+
+				assert.Equalf(t, true, gotConfig.CPU.IsSpecified(), "cpu should be set")
+				assert.Equalf(t, true, gotConfig.CPU.IsNull(), "cpu should be null")
+
+				assert.Equalf(t, false, gotConfig.RAM.IsSpecified(), "ram should not be set")
+				assert.Equalf(t, false, gotConfig.RAM.IsNull(), "ram should not be null")
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var obj ComplexNullable
+			err := json.Unmarshal(tt.jsonInput, &obj)
+			require.NoError(t, err)
+			tt.assert(obj, t)
+		})
+	}
+}
+
 // Idempotency tests for nullable and optional
 type StringNullableOptional struct {
 	ID      nullable.Nullable[string] `json:"id,omitempty"`
