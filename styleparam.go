@@ -26,8 +26,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/oapi-codegen/runtime/types"
 	"github.com/google/uuid"
+	"github.com/oapi-codegen/runtime/types"
 )
 
 // Parameter escaping works differently based on where a header is found
@@ -97,7 +97,12 @@ func StyleParamWithLocation(style string, explode bool, paramName string, paramL
 	case reflect.Struct:
 		return styleStruct(style, explode, paramName, paramLocation, value)
 	case reflect.Map:
-		return styleMap(style, explode, paramName, paramLocation, value)
+		dict := make(map[string]any, v.Len())
+		for _, key := range v.MapKeys() {
+			// the key is guaranteed to be a string
+			dict[key.String()] = v.MapIndex(key).Interface()
+		}
+		return styleMap(style, explode, paramName, paramLocation, dict)
 	default:
 		return stylePrimitive(style, explode, paramName, paramLocation, value)
 	}

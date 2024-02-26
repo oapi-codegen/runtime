@@ -14,11 +14,12 @@
 package runtime
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
-	"github.com/oapi-codegen/runtime/types"
 	"github.com/google/uuid"
+	"github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -689,4 +690,33 @@ func TestStyleParam(t *testing.T) {
 	assert.NoError(t, err)
 	assert.EqualValues(t, "972beb41-e5ea-4b31-a79a-96f4999d8769", result)
 
+}
+
+// Issue 37 - https://github.com/oapi-codegen/runtime/issues/37
+func TestIssue37(t *testing.T) {
+	styles := []string{
+		"simple",
+		"spaceDelimited",
+		"pipeDelimited",
+		"deepObject",
+		"form",
+		"matrix",
+		"label",
+	}
+	values := []struct {
+		name  string
+		value interface{}
+	}{
+		{"int", map[string]int{"k1": 1, "k2": 2, "k3": 3}},
+		{"string", map[string]string{"k1": "v1", "k2": "v2", "k3": "v3"}},
+		{"any", map[string]any{"k1": "v1", "k2": 2, "k3": 3.5}},
+	}
+	for _, style := range styles {
+		for _, value := range values {
+			t.Run(fmt.Sprintf("%s %s", value.name, style), func(t *testing.T) {
+				_, err := StyleParamWithLocation("form", true, "priority", ParamLocationQuery, value.value)
+				assert.NoError(t, err)
+			})
+		}
+	}
 }
