@@ -18,9 +18,15 @@ type InnerObject struct {
 	Name string
 	ID   int
 }
+
 type InnerObject2 struct {
 	Foo string
 	Is  bool
+}
+
+type InnerObject3 struct {
+	Foo   string
+	Count *int
 }
 
 // These are all possible field types, mandatory and optional.
@@ -36,6 +42,7 @@ type AllFields struct {
 	Oas  *[]string        `json:"oas,omitempty"`
 	O    InnerObject      `json:"o"`
 	Ao   []InnerObject2   `json:"ao"`
+	Aop  *[]InnerObject3  `json:"aop"`
 	Onas InnerArrayObject `json:"onas"`
 	Oo   *InnerObject     `json:"oo,omitempty"`
 	D    MockBinder       `json:"d"`
@@ -58,6 +65,9 @@ func TestDeepObject(t *testing.T) {
 	}
 	d := MockBinder{Time: time.Date(2020, 2, 1, 0, 0, 0, 0, time.UTC)}
 
+	one := 1
+	two := 1
+
 	srcObj := AllFields{
 		I:   12,
 		Oi:  &oi,
@@ -76,6 +86,10 @@ func TestDeepObject(t *testing.T) {
 			{Foo: "bar", Is: true},
 			{Foo: "baz", Is: false},
 		},
+		Aop: &[]InnerObject3{
+			{Foo: "a", Count: &one},
+			{Foo: "b", Count: &two},
+		},
 		Onas: InnerArrayObject{
 			Names: []string{"Bill", "Frank"},
 		},
@@ -88,7 +102,7 @@ func TestDeepObject(t *testing.T) {
 
 	marshaled, err := MarshalDeepObject(srcObj, "p")
 	require.NoError(t, err)
-	require.EqualValues(t, "p[ab][0]=true&p[ao][0][Foo]=bar&p[ao][0][Is]=true&p[ao][1][Foo]=baz&p[ao][1][Is]=false&p[as][0]=hello&p[as][1]=world&p[b]=true&p[d]=2020-02-01&p[f]=4.2&p[i]=12&p[m][additional]=1&p[o][ID]=456&p[o][Name]=Joe Schmoe&p[oas][0]=foo&p[oas][1]=bar&p[ob]=true&p[od]=2020-02-01&p[of]=3.7&p[oi]=5&p[om][additional]=1&p[onas][names][0]=Bill&p[onas][names][1]=Frank&p[oo][ID]=123&p[oo][Name]=Marcin Romaszewicz", marshaled)
+	require.EqualValues(t, "p[ab][0]=true&p[ao][0][Foo]=bar&p[ao][0][Is]=true&p[ao][1][Foo]=baz&p[ao][1][Is]=false&p[aop][0][Count]=1&p[aop][0][Foo]=a&p[aop][1][Count]=1&p[aop][1][Foo]=b&p[as][0]=hello&p[as][1]=world&p[b]=true&p[d]=2020-02-01&p[f]=4.2&p[i]=12&p[m][additional]=1&p[o][ID]=456&p[o][Name]=Joe Schmoe&p[oas][0]=foo&p[oas][1]=bar&p[ob]=true&p[od]=2020-02-01&p[of]=3.7&p[oi]=5&p[om][additional]=1&p[onas][names][0]=Bill&p[onas][names][1]=Frank&p[oo][ID]=123&p[oo][Name]=Marcin Romaszewicz", marshaled)
 
 	params := make(url.Values)
 	marshaledParts := strings.Split(marshaled, "&")
