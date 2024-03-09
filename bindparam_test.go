@@ -294,12 +294,20 @@ func TestSplitParameter(t *testing.T) {
 
 func TestBindQueryParameter(t *testing.T) {
 	t.Run("deepObject", func(t *testing.T) {
+		type Object struct {
+			Count int `json:"count"`
+		}
+		type Nested struct {
+			Object  Object   `json:"object"`
+			Objects []Object `json:"objects"`
+		}
 		type ID struct {
 			FirstName *string     `json:"firstName"`
 			LastName  *string     `json:"lastName"`
 			Role      string      `json:"role"`
 			Birthday  *types.Date `json:"birthday"`
 			Married   *MockBinder `json:"married"`
+			Nested    Nested      `json:"nested"`
 		}
 
 		expectedName := "Alex"
@@ -308,16 +316,23 @@ func TestBindQueryParameter(t *testing.T) {
 			Role:      "admin",
 			Birthday:  &types.Date{Time: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)},
 			Married:   &MockBinder{time.Date(2020, 2, 2, 0, 0, 0, 0, time.UTC)},
+			Nested: Nested{
+				Object:  Object{Count: 123},
+				Objects: []Object{{Count: 1}, {Count: 2}},
+			},
 		}
 
 		actual := new(ID)
 		paramName := "id"
 		queryParams := url.Values{
-			"id[firstName]": {"Alex"},
-			"id[role]":      {"admin"},
-			"foo":           {"bar"},
-			"id[birthday]":  {"2020-01-01"},
-			"id[married]":   {"2020-02-02"},
+			"id[firstName]":                 {"Alex"},
+			"id[role]":                      {"admin"},
+			"foo":                           {"bar"},
+			"id[birthday]":                  {"2020-01-01"},
+			"id[married]":                   {"2020-02-02"},
+			"id[nested][object][count]":     {"123"},
+			"id[nested][objects][0][count]": {"1"},
+			"id[nested][objects][1][count]": {"2"},
 		}
 
 		err := BindQueryParameter("deepObject", true, false, paramName, queryParams, &actual)
