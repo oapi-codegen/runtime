@@ -111,7 +111,6 @@ func (f *fieldOrValue) appendPathValue(path []string, value string) {
 }
 
 func makeFieldOrValue(paths [][]string, values []string) fieldOrValue {
-
 	f := fieldOrValue{
 		fields: make(map[string]fieldOrValue),
 	}
@@ -193,7 +192,7 @@ func fieldIndicesByJSONTag(i interface{}) (map[string]int, error) {
 }
 
 func assignPathValues(dst interface{}, pathValues fieldOrValue) error {
-	//t := reflect.TypeOf(dst)
+	// t := reflect.TypeOf(dst)
 	v := reflect.ValueOf(dst)
 
 	iv := reflect.Indirect(v)
@@ -337,7 +336,7 @@ func assignPathValues(dst interface{}, pathValues fieldOrValue) error {
 func assignSlice(dst reflect.Value, pathValues fieldOrValue) error {
 	// Gather up the values
 	nValues := len(pathValues.fields)
-	values := make([]string, nValues)
+
 	// We expect to have consecutive array indices in the map
 	for i := 0; i < nValues; i++ {
 		indexStr := strconv.Itoa(i)
@@ -345,14 +344,9 @@ func assignSlice(dst reflect.Value, pathValues fieldOrValue) error {
 		if !found {
 			return errors.New("array deepObjects must have consecutive indices")
 		}
-		values[i] = fv.value
-	}
 
-	// This could be cleaner, but we can call into assignPathValues to
-	// avoid recreating this logic.
-	for i := 0; i < nValues; i++ {
 		dstElem := dst.Index(i).Addr()
-		err := assignPathValues(dstElem.Interface(), fieldOrValue{value: values[i]})
+		err := assignPathValues(dstElem.Interface(), fv)
 		if err != nil {
 			return fmt.Errorf("error binding array: %w", err)
 		}
