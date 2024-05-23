@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,6 +40,8 @@ type AllFields struct {
 	Oda *types.Date `json:"oda,omitempty"`
 	Ti  time.Time   `json:"ti"`
 	Oti *time.Time  `json:"oti,omitempty"`
+	U   types.UUID  `json:"u"`
+	Ou  *types.UUID `json:"ou,omitempty"`
 }
 
 func TestDeepObject(t *testing.T) {
@@ -57,6 +60,7 @@ func TestDeepObject(t *testing.T) {
 	bi := MockBinder{Time: time.Date(2020, 2, 1, 0, 0, 0, 0, time.UTC)}
 	da := types.Date{Time: time.Date(2020, 2, 2, 0, 0, 0, 0, time.UTC)}
 	ti := time.Now().UTC()
+	u := uuid.New()
 
 	srcObj := AllFields{
 		// Primitive types
@@ -83,6 +87,8 @@ func TestDeepObject(t *testing.T) {
 		Oda: &da,
 		Ti:  ti,
 		Oti: &ti,
+		U:   u,
+		Ou:  &u,
 	}
 
 	marshaled, err := MarshalDeepObject(srcObj, "p")

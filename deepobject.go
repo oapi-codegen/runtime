@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"encoding"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -198,6 +199,18 @@ func assignPathValues(dst interface{}, pathValues fieldOrValue) error {
 
 	iv := reflect.Indirect(v)
 	it := iv.Type()
+
+	switch dst := v.Interface().(type) {
+	case Binder:
+		return dst.Bind(pathValues.value)
+	case encoding.TextUnmarshaler:
+		err := dst.UnmarshalText([]byte(pathValues.value))
+		if err != nil {
+			return fmt.Errorf("error unmarshalling text '%s': %w", pathValues.value, err)
+		}
+
+		return nil
+	}
 
 	switch it.Kind() {
 	case reflect.Map:
