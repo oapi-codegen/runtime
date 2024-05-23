@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,6 +18,7 @@ type InnerObject struct {
 
 // These are all possible field types, mandatory and optional.
 type AllFields struct {
+	// Primitive types
 	I   int             `json:"i"`
 	Oi  *int            `json:"oi,omitempty"`
 	F   float32         `json:"f"`
@@ -27,10 +29,16 @@ type AllFields struct {
 	Oas *[]string       `json:"oas,omitempty"`
 	O   InnerObject     `json:"o"`
 	Oo  *InnerObject    `json:"oo,omitempty"`
-	D   MockBinder      `json:"d"`
-	Od  *MockBinder     `json:"od,omitempty"`
 	M   map[string]int  `json:"m"`
 	Om  *map[string]int `json:"om,omitempty"`
+
+	// Complex types
+	Bi  MockBinder  `json:"bi"`
+	Obi *MockBinder `json:"obi,omitempty"`
+	Da  types.Date  `json:"da"`
+	Oda *types.Date `json:"oda,omitempty"`
+	Ti  time.Time   `json:"ti"`
+	Oti *time.Time  `json:"oti,omitempty"`
 }
 
 func TestDeepObject(t *testing.T) {
@@ -45,9 +53,13 @@ func TestDeepObject(t *testing.T) {
 	om := map[string]int{
 		"additional": 1,
 	}
-	d := MockBinder{Time: time.Date(2020, 2, 1, 0, 0, 0, 0, time.UTC)}
+
+	bi := MockBinder{Time: time.Date(2020, 2, 1, 0, 0, 0, 0, time.UTC)}
+	da := types.Date{Time: time.Date(2020, 2, 2, 0, 0, 0, 0, time.UTC)}
+	ti := time.Now().UTC()
 
 	srcObj := AllFields{
+		// Primitive types
 		I:   12,
 		Oi:  &oi,
 		F:   4.2,
@@ -61,10 +73,16 @@ func TestDeepObject(t *testing.T) {
 			ID:   456,
 		},
 		Oo: &oo,
-		D:  d,
-		Od: &d,
 		M:  om,
 		Om: &om,
+
+		// Complex types
+		Bi:  bi,
+		Obi: &bi,
+		Da:  da,
+		Oda: &da,
+		Ti:  ti,
+		Oti: &ti,
 	}
 
 	marshaled, err := MarshalDeepObject(srcObj, "p")
