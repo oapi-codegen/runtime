@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/oapi-codegen/nullable"
 	"github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -42,6 +43,13 @@ type AllFields struct {
 	Oti *time.Time  `json:"oti,omitempty"`
 	U   types.UUID  `json:"u"`
 	Ou  *types.UUID `json:"ou,omitempty"`
+
+	// Nullable
+	NiSet   nullable.Nullable[int]         `json:"ni_set,omitempty"`
+	NiNull  nullable.Nullable[int]         `json:"ni_null,omitempty"`
+	NiUnset nullable.Nullable[int]         `json:"ni_unset,omitempty"`
+	No      nullable.Nullable[InnerObject] `json:"no,omitempty"`
+	Nu      nullable.Nullable[uuid.UUID]   `json:"nu,omitempty"`
 }
 
 func TestDeepObject(t *testing.T) {
@@ -89,6 +97,15 @@ func TestDeepObject(t *testing.T) {
 		Oti: &ti,
 		U:   u,
 		Ou:  &u,
+
+		// Nullable
+		NiSet:  nullable.NewNullableWithValue(5),
+		NiNull: nullable.NewNullNullable[int](),
+		No: nullable.NewNullableWithValue(InnerObject{
+			Name: "John Smith",
+			ID:   456,
+		}),
+		Nu: nullable.NewNullableWithValue(uuid.New()),
 	}
 
 	marshaled, err := MarshalDeepObject(srcObj, "p")
