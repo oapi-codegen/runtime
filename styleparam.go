@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/oapi-codegen/runtime/types"
 )
 
@@ -97,12 +98,7 @@ func StyleParamWithLocation(style string, explode bool, paramName string, paramL
 	case reflect.Struct:
 		return styleStruct(style, explode, paramName, paramLocation, value)
 	case reflect.Map:
-		dict := make(map[string]any, v.Len())
-		for _, key := range v.MapKeys() {
-			// the key is guaranteed to be a string
-			dict[key.String()] = v.MapIndex(key).Interface()
-		}
-		return styleMap(style, explode, paramName, paramLocation, dict)
+		return styleMap(style, explode, paramName, paramLocation, value)
 	default:
 		return stylePrimitive(style, explode, paramName, paramLocation, value)
 	}
@@ -293,19 +289,15 @@ func styleMap(style string, explode bool, paramName string, paramLocation ParamL
 		}
 		return MarshalDeepObject(value, paramName)
 	}
-
-	dict, ok := value.(map[string]interface{})
-	if !ok {
-		return "", errors.New("map not of type map[string]interface{}")
-	}
+	v := reflect.ValueOf(value)
 
 	fieldDict := make(map[string]string)
-	for fieldName, value := range dict {
-		str, err := primitiveToString(value)
+	for _, fieldName := range v.MapKeys() {
+		str, err := primitiveToString(v.MapIndex(fieldName).Interface())
 		if err != nil {
 			return "", fmt.Errorf("error formatting '%s': %s", paramName, err)
 		}
-		fieldDict[fieldName] = str
+		fieldDict[fieldName.String()] = str
 	}
 	return processFieldDict(style, explode, paramName, paramLocation, fieldDict)
 }
