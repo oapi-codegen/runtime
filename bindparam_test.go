@@ -355,7 +355,7 @@ func TestBindQueryParameter(t *testing.T) {
 		var optionalNonPointerText = ""
 		err = BindQueryParameter("form", true, false, "notfound", queryParams, &optionalNonPointerText)
 		require.NoError(t, err)
-		assert.Zero(t, "")
+		assert.Zero(t, optionalNonPointerText)
 
 		err = BindQueryParameter("form", true, false, "text", queryParams, &optionalNonPointerText)
 		require.NoError(t, err)
@@ -367,6 +367,15 @@ func TestBindQueryParameter(t *testing.T) {
 		err = BindQueryParameter("form", true, true, "notfound", queryParams, &optionalNumber)
 		assert.Error(t, err)
 
+		var optionalPointerText *string
+		err = BindQueryParameter("form", true, false, "notfound", queryParams, &optionalPointerText)
+		require.NoError(t, err)
+		assert.Zero(t, optionalPointerText)
+
+		err = BindQueryParameter("form", true, false, "text", queryParams, &optionalPointerText)
+		require.NoError(t, err)
+		require.NotNil(t, optionalPointerText)
+		assert.Equal(t, "loremipsum", *optionalPointerText)
 	})
 }
 
