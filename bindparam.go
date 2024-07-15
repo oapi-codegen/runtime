@@ -318,7 +318,11 @@ func BindQueryParameter(style string, explode bool, required bool, paramName str
 	// inner code will bind the string's value to this interface.
 	var output interface{}
 
-	if required {
+	// required params are never pointers, but it may happen that optional param
+	// is not pointer as well if user decides to annotate it with
+	// x-go-type-skip-optional-pointer
+	var extraIndirect = !required && v.Kind() == reflect.Pointer
+	if !extraIndirect {
 		// If the parameter is required, then the generated code will pass us
 		// a pointer to it: &int, &object, and so forth. We can directly set
 		// them.
@@ -414,9 +418,10 @@ func BindQueryParameter(style string, explode bool, required bool, paramName str
 			if err != nil {
 				return err
 			}
-			// If the parameter is required, and we've successfully unmarshaled
-			// it, this assigns the new object to the pointer pointer.
-			if !required {
+			// If the parameter is required (or relies on x-go-type-skip-optional-pointer),
+			// and we've successfully unmarshaled it, this assigns the new object to the
+			// pointer pointer.
+			if extraIndirect {
 				dv.Set(reflect.ValueOf(output))
 			}
 			return nil
@@ -456,7 +461,7 @@ func BindQueryParameter(style string, explode bool, required bool, paramName str
 		if err != nil {
 			return err
 		}
-		if !required {
+		if extraIndirect {
 			dv.Set(reflect.ValueOf(output))
 		}
 		return nil

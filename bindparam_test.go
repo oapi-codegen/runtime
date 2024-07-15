@@ -339,6 +339,7 @@ func TestBindQueryParameter(t *testing.T) {
 		queryParams := url.Values{
 			"time":   {"2020-12-09T16:09:53+00:00"},
 			"number": {"100"},
+			"text":   {"loremipsum"},
 		}
 		// An optional time will be a pointer to a time in a parameter object
 		var optionalTime *time.Time
@@ -351,12 +352,30 @@ func TestBindQueryParameter(t *testing.T) {
 		require.NoError(t, err)
 		assert.Nil(t, optionalNumber)
 
+		var optionalNonPointerText = ""
+		err = BindQueryParameter("form", true, false, "notfound", queryParams, &optionalNonPointerText)
+		require.NoError(t, err)
+		assert.Zero(t, optionalNonPointerText)
+
+		err = BindQueryParameter("form", true, false, "text", queryParams, &optionalNonPointerText)
+		require.NoError(t, err)
+		assert.Equal(t, "loremipsum", optionalNonPointerText)
+
 		// If we require values, we require errors when they're not present.
 		err = BindQueryParameter("form", true, true, "notfound", queryParams, &optionalTime)
 		assert.Error(t, err)
 		err = BindQueryParameter("form", true, true, "notfound", queryParams, &optionalNumber)
 		assert.Error(t, err)
 
+		var optionalPointerText *string
+		err = BindQueryParameter("form", true, false, "notfound", queryParams, &optionalPointerText)
+		require.NoError(t, err)
+		assert.Zero(t, optionalPointerText)
+
+		err = BindQueryParameter("form", true, false, "text", queryParams, &optionalPointerText)
+		require.NoError(t, err)
+		require.NotNil(t, optionalPointerText)
+		assert.Equal(t, "loremipsum", *optionalPointerText)
 	})
 }
 
