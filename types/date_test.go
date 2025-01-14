@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"testing"
 	"time"
@@ -28,6 +29,29 @@ func TestDate_UnmarshalJSON(t *testing.T) {
 		DateField Date `json:"date"`
 	}{}
 	err := json.Unmarshal([]byte(jsonStr), &b)
+	assert.NoError(t, err)
+	assert.Equal(t, testDate, b.DateField.Time)
+}
+
+func TestDate_MarshalXML(t *testing.T) {
+	testDate := time.Date(2019, 4, 1, 0, 0, 0, 0, time.UTC)
+	b := struct {
+		DateField Date `xml:"date"`
+	}{
+		DateField: Date{testDate},
+	}
+	xmlBytes, err := xml.Marshal(b)
+	assert.NoError(t, err)
+	assert.Equal(t, `<date>2019-04-01</date>`, string(xmlBytes))
+}
+
+func TestDate_UnmarshalXML(t *testing.T) {
+	testDate := time.Date(2019, 4, 1, 0, 0, 0, 0, time.UTC)
+	xmlStr := `<date>2019-04-01</date>`
+	b := struct {
+		DateField Date `xml:"date"`
+	}{}
+	err := xml.Unmarshal([]byte(xmlStr), &b)
 	assert.NoError(t, err)
 	assert.Equal(t, testDate, b.DateField.Time)
 }

@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"time"
 )
 
@@ -19,6 +20,23 @@ func (d *Date) UnmarshalJSON(data []byte) error {
 	var dateStr string
 	err := json.Unmarshal(data, &dateStr)
 	if err != nil {
+		return err
+	}
+	parsed, err := time.Parse(DateFormat, dateStr)
+	if err != nil {
+		return err
+	}
+	d.Time = parsed
+	return nil
+}
+
+func (d Date) MarshalXML(encoder *xml.Encoder, start xml.StartElement) error {
+	return encoder.EncodeElement(d.Time.Format(DateFormat), start)
+}
+
+func (d *Date) UnmarshalXML(decoder *xml.Decoder, start xml.StartElement) error {
+	var dateStr string
+	if err := decoder.DecodeElement(&dateStr, &start); err != nil {
 		return err
 	}
 	parsed, err := time.Parse(DateFormat, dateStr)
