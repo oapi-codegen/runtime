@@ -22,6 +22,11 @@ func TestEmail_MarshalJSON_Validation(t *testing.T) {
 			expectedJSON:  []byte(`{"email":"validemail@openapicodegen.com"}`),
 			expectedError: nil,
 		},
+		"it should succeed marshalling a valid email and return valid JSON populated with the email with valid separators": {
+			email:         Email("validemail+with_valid-separator{like}~these*ones@openapicodegen.com"),
+			expectedJSON:  []byte(`{"email":"validemail+with_valid-separator{like}~these*ones@openapicodegen.com"}`),
+			expectedError: nil,
+		},
 		"it should fail marshalling an invalid email and return a validation error": {
 			email:         Email("invalidemail"),
 			expectedJSON:  nil,

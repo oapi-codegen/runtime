@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/json"
 	"errors"
+	"net/mail"
 )
 
 // ErrValidationEmail is the sentinel error returned when an email fails validation
@@ -14,7 +15,7 @@ var ErrValidationEmail = errors.New("email: failed to pass regex validation")
 type Email string
 
 func (e Email) MarshalJSON() ([]byte, error) {
-	if !emailRegex.MatchString(string(e)) {
+	if _, err := mail.ParseAddress(string(e)); err != nil {
 		return nil, ErrValidationEmail
 	}
 
@@ -32,7 +33,7 @@ func (e *Email) UnmarshalJSON(data []byte) error {
 	}
 
 	*e = Email(s)
-	if !emailRegex.MatchString(s) {
+	if _, err := mail.ParseAddress(s); err != nil {
 		return ErrValidationEmail
 	}
 
