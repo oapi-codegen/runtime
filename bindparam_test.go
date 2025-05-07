@@ -322,6 +322,10 @@ func TestBindQueryParameter(t *testing.T) {
 		err := BindQueryParameter("deepObject", true, false, paramName, queryParams, &actual)
 		assert.NoError(t, err)
 		assert.Equal(t, expectedDeepObject, actual)
+
+		// If we require values, we require errors when they're not present.
+		err = BindQueryParameter("deepObject", true, true, "notfound", queryParams, &actual)
+		assert.Error(t, err)
 	})
 
 	t.Run("form", func(t *testing.T) {
