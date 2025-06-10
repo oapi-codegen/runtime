@@ -509,15 +509,52 @@ func TestBindParamsToExplodedObject(t *testing.T) {
 }
 
 func TestBindStyledParameterWithLocation(t *testing.T) {
-	expectedBig := big.NewInt(12345678910)
+	t.Run("bigNumber", func(t *testing.T) {
+		expectedBig := big.NewInt(12345678910)
+		var dstBigNumber big.Int
 
-	var dstBigNumber big.Int
-
-	err := BindStyledParameterWithOptions("simple", "id", "12345678910", &dstBigNumber, BindStyledParameterOptions{
-		ParamLocation: ParamLocationUndefined,
-		Explode:       false,
-		Required:      false,
+		err := BindStyledParameterWithOptions("simple", "id", "12345678910", &dstBigNumber, BindStyledParameterOptions{
+			ParamLocation: ParamLocationUndefined,
+			Explode:       false,
+			Required:      false,
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, *expectedBig, dstBigNumber)
 	})
-	assert.NoError(t, err)
-	assert.Equal(t, *expectedBig, dstBigNumber)
+
+	t.Run("object", func(t *testing.T) {
+		type Object struct {
+			Key1 string `json:"key1"`
+			Key2 string `json:"key2"`
+		}
+		expectedObject := Object{
+			Key1: "value1",
+			Key2: "42",
+		}
+		var dstObject Object
+
+		err := BindStyledParameterWithOptions("simple", "map", "key1,value1,key2,42", &dstObject, BindStyledParameterOptions{
+			ParamLocation: ParamLocationUndefined,
+			Explode:       false,
+			Required:      false,
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, *&expectedObject, dstObject)
+	})
+
+	t.Run("map", func(t *testing.T) {
+		expectedMap := map[string]any{
+			"key1": "value1",
+			"key2": "42",
+		}
+		var dstMap map[string]any
+
+		err := BindStyledParameterWithOptions("simple", "map", "key1,value1,key2,42", &dstMap, BindStyledParameterOptions{
+			ParamLocation: ParamLocationUndefined,
+			Explode:       false,
+			Required:      false,
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, *&expectedMap, dstMap)
+	})
 }
