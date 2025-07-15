@@ -109,7 +109,7 @@ func BindStyledParameterWithOptions(style string, paramName string, value string
 	// This is the basic type of the destination object.
 	t := v.Type()
 
-	if t.Kind() == reflect.Struct {
+	if t.Kind() == reflect.Struct || t.Kind() == reflect.Map {
 		// We've got a destination object, we'll create a JSON representation
 		// of the input value, and let the json library deal with the unmarshaling
 		parts, err := splitStyledParameter(style, opts.Explode, true, paramName, value)
