@@ -306,7 +306,7 @@ func bindSplitPartsToDestinationStruct(paramName string, parts []string, explode
 // tell them apart. This code tries to fail, but the moral of the story is that
 // you shouldn't pass objects via form styled query arguments, just use
 // the Content parameter form.
-func BindQueryParameter(style string, explode bool, required bool, paramName string,
+func BindQueryParameter(style string, explode bool, required bool, defaultV any, paramName string,
 	queryParams url.Values, dest interface{}) error {
 
 	// dv = destination value.
@@ -373,10 +373,14 @@ func BindQueryParameter(style string, explode bool, required bool, paramName str
 				if !found {
 					if required {
 						return fmt.Errorf("query parameter '%s' is required", paramName)
+					} else if defaultV != nil {
+
 					} else {
 						// If an optional parameter is not found, we do nothing,
 						return nil
 					}
+
+					values = []string{fmt.Sprintf("%v", defaultV)}
 				}
 				err = bindSplitPartsToDestinationArray(values, output)
 			case reflect.Struct:
@@ -397,9 +401,13 @@ func BindQueryParameter(style string, explode bool, required bool, paramName str
 				if len(values) == 0 {
 					if required {
 						return fmt.Errorf("query parameter '%s' is required", paramName)
+					} else if defaultV != nil {
+
 					} else {
 						return nil
 					}
+
+					values = []string{fmt.Sprintf("%v", defaultV)}
 				}
 				if len(values) != 1 {
 					return fmt.Errorf("multiple values for single value parameter '%s'", paramName)
@@ -408,6 +416,8 @@ func BindQueryParameter(style string, explode bool, required bool, paramName str
 				if !found {
 					if required {
 						return fmt.Errorf("query parameter '%s' is required", paramName)
+					} else if defaultV != nil {
+
 					} else {
 						// If an optional parameter is not found, we do nothing,
 						return nil
@@ -430,9 +440,13 @@ func BindQueryParameter(style string, explode bool, required bool, paramName str
 			if !found {
 				if required {
 					return fmt.Errorf("query parameter '%s' is required", paramName)
+				} else if defaultV != nil {
+
 				} else {
 					return nil
 				}
+
+				values = []string{fmt.Sprintf("%v", defaultV)}
 			}
 			if len(values) != 1 {
 				return fmt.Errorf("parameter '%s' is not exploded, but is specified multiple times", paramName)
@@ -449,6 +463,8 @@ func BindQueryParameter(style string, explode bool, required bool, paramName str
 			if len(parts) == 0 {
 				if required {
 					return fmt.Errorf("query parameter '%s' is required", paramName)
+				} else if defaultV != nil {
+
 				} else {
 					return nil
 				}
