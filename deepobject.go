@@ -335,26 +335,24 @@ func assignPathValues(dst interface{}, pathValues fieldOrValue) error {
 }
 
 func assignSlice(dst reflect.Value, pathValues fieldOrValue) error {
-	// Gather up the values
 	nValues := len(pathValues.fields)
-	values := make([]string, nValues)
-	// We expect to have consecutive array indices in the map
+
+	// Process each array element by index
 	for i := 0; i < nValues; i++ {
 		indexStr := strconv.Itoa(i)
 		fv, found := pathValues.fields[indexStr]
 		if !found {
 			return errors.New("array deepObjects must have consecutive indices")
 		}
-		values[i] = fv.value
-	}
 
-	// This could be cleaner, but we can call into assignPathValues to
-	// avoid recreating this logic.
-	for i := 0; i < nValues; i++ {
+		// Get the destination element
 		dstElem := dst.Index(i).Addr()
-		err := assignPathValues(dstElem.Interface(), fieldOrValue{value: values[i]})
+
+		// assignPathValues handles both simple values (via fv.value) and
+		// nested objects (via fv.fields) automatically
+		err := assignPathValues(dstElem.Interface(), fv)
 		if err != nil {
-			return fmt.Errorf("error binding array: %w", err)
+			return fmt.Errorf("error binding array element %d: %w", i, err)
 		}
 	}
 
