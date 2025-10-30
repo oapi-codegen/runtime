@@ -84,3 +84,57 @@ func TestDeepObject(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, srcObj, dstObj)
 }
+
+// Item represents an item object for testing array of objects
+type Item struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+func TestDeepObject_ArrayOfObjects(t *testing.T) {
+	// Test case for:
+	// name: items
+	// style: deepObject
+	// required: false
+	// explode: true
+	// schema:
+	//   type: array
+	//   minItems: 1
+	//   items:
+	//     type: object
+
+	srcArray := []Item{
+		{Name: "first", Value: "value1"},
+		{Name: "second", Value: "value2"},
+	}
+
+	// Marshal the array to deepObject format
+	marshaled, err := MarshalDeepObject(srcArray, "items")
+	require.NoError(t, err)
+	t.Log("Marshaled:", marshaled)
+
+	// Expected format for array of objects with explode:true should be:
+	// items[0][name]=first&items[0][value]=value1&items[1][name]=second&items[1][value]=value2
+
+	// Parse the marshaled string into url.Values
+	params := make(url.Values)
+	marshaledParts := strings.Split(marshaled, "&")
+	for _, p := range marshaledParts {
+		parts := strings.Split(p, "=")
+		require.Equal(t, 2, len(parts))
+		params.Set(parts[0], parts[1])
+	}
+
+	// Unmarshal back to the destination array
+	var dstArray []Item
+	err = UnmarshalDeepObject(&dstArray, "items", params)
+	require.NoError(t, err)
+
+	// Verify the result matches the source
+	assert.EqualValues(t, srcArray, dstArray)
+	assert.Len(t, dstArray, 2)
+	assert.Equal(t, "first", dstArray[0].Name)
+	assert.Equal(t, "value1", dstArray[0].Value)
+	assert.Equal(t, "second", dstArray[1].Name)
+	assert.Equal(t, "value2", dstArray[1].Value)
+}
