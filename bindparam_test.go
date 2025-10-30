@@ -21,9 +21,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/oapi-codegen/runtime/types"
 )
 
 // MockBinder is just an independent version of Binder that has the Bind implemented
@@ -45,7 +46,7 @@ func (d *MockBinder) Bind(src string) error {
 }
 
 func (d MockBinder) MarshalJSON() ([]byte, error) {
-	return json.Marshal(d.Time.Format(types.DateFormat))
+	return json.Marshal(d.Format(types.DateFormat))
 }
 
 func (d *MockBinder) UnmarshalJSON(data []byte) error {
@@ -539,7 +540,7 @@ func TestBindStyledParameterWithLocation(t *testing.T) {
 			Required:      false,
 		})
 		assert.NoError(t, err)
-		assert.Equal(t, *&expectedObject, dstObject)
+		assert.EqualValues(t, expectedObject, dstObject)
 	})
 
 	t.Run("map", func(t *testing.T) {
@@ -555,6 +556,6 @@ func TestBindStyledParameterWithLocation(t *testing.T) {
 			Required:      false,
 		})
 		assert.NoError(t, err)
-		assert.Equal(t, *&expectedMap, dstMap)
+		assert.EqualValues(t, expectedMap, dstMap)
 	})
 }
