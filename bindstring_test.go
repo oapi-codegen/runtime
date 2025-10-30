@@ -19,8 +19,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/oapi-codegen/runtime/types"
 )
 
 func TestBindStringToObject(t *testing.T) {
@@ -197,10 +198,10 @@ func TestBindStringToObject(t *testing.T) {
 	// Checks whether a mock binder works and embedded types
 	var mockBinder MockBinder
 	assert.NoError(t, BindStringToObject(dateString, &mockBinder))
-	assert.EqualValues(t, dateString, mockBinder.Time.Format("2006-01-02"))
+	assert.EqualValues(t, dateString, mockBinder.Format("2006-01-02"))
 	var dstEmbeddedMockBinder EmbeddedMockBinder
 	assert.NoError(t, BindStringToObject(dateString, &dstEmbeddedMockBinder))
-	assert.EqualValues(t, dateString, dstEmbeddedMockBinder.Time.Format("2006-01-02"))
+	assert.EqualValues(t, dateString, dstEmbeddedMockBinder.Format("2006-01-02"))
 
 	// Checks UUID binding
 	uuidString := "bbca1470-5e1f-4c64-ba99-fa7a6d2687b0"
