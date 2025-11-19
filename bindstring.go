@@ -33,6 +33,11 @@ import (
 func BindStringToObject(src string, dst interface{}) error {
 	var err error
 
+	// Check if the destination implements Binder interface before any reflection
+	if binder, ok := dst.(Binder); ok {
+		return binder.Bind(src)
+	}
+
 	v := reflect.ValueOf(dst)
 	t := reflect.TypeOf(dst)
 
@@ -107,11 +112,6 @@ func BindStringToObject(src string, dst interface{}) error {
 		}
 		fallthrough
 	case reflect.Struct:
-		// if this is not of type Time or of type Date look to see if this is of type Binder.
-		if dstType, ok := dst.(Binder); ok {
-			return dstType.Bind(src)
-		}
-
 		if t.ConvertibleTo(reflect.TypeOf(time.Time{})) {
 			// Don't fail on empty string.
 			if src == "" {
