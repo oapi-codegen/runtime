@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"encoding"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,11 @@ import (
 
 	"github.com/oapi-codegen/runtime/types"
 )
+
+type nullableLike interface {
+	SetNull()
+	UnmarshalJSON(data []byte) error
+}
 
 func marshalDeepObject(in interface{}, path []string) ([]string, error) {
 	var result []string
@@ -54,8 +60,16 @@ func marshalDeepObject(in interface{}, path []string) ([]string, error) {
 		// into a deepObject style set of subscripts. [a, b, c] turns into
 		// [a][b][c]
 		prefix := "[" + strings.Join(path, "][") + "]"
+
+		var value string
+		if t == nil {
+			value = "null"
+		} else {
+			value = fmt.Sprintf("%v", t)
+		}
+
 		result = []string{
-			prefix + fmt.Sprintf("=%v", t),
+			prefix + fmt.Sprintf("=%s", value),
 		}
 	}
 	return result, nil
@@ -199,8 +213,52 @@ func assignPathValues(dst interface{}, pathValues fieldOrValue) error {
 	iv := reflect.Indirect(v)
 	it := iv.Type()
 
+	switch dst := v.Interface().(type) {
+	case Binder:
+		return dst.Bind(pathValues.value)
+	case encoding.TextUnmarshaler:
+		err := dst.UnmarshalText([]byte(pathValues.value))
+		if err != nil {
+			return fmt.Errorf("error unmarshalling text '%s': %w", pathValues.value, err)
+		}
+
+		return nil
+	}
+
 	switch it.Kind() {
 	case reflect.Map:
+		// If the value looks like nullable.Nullable[T], we need to handle it properly.
+		if dst, ok := dst.(nullableLike); ok {
+			if pathValues.value == "null" {
+				dst.SetNull()
+
+				return nil
+			}
+
+			// We create a new empty value, who's type is the same as the
+			// 'T' in nullable.Nullable[T]. Because of how nullable.Nullable is
+			// implemented, we can do that by getting the type's element type.
+			data := reflect.New(it.Elem()).Interface()
+
+			// We now try to assign the path values to the new type.
+			if err := assignPathValues(data, pathValues); err != nil {
+				return err
+			}
+
+			// We'll marshal the data so that we can unmarshal it into
+			// the original nullable.Nullable value.
+			dataBytes, err := json.Marshal(data)
+			if err != nil {
+				return err
+			}
+
+			if err := dst.UnmarshalJSON(dataBytes); err != nil {
+				return err
+			}
+
+			return nil
+		}
+
 		dstMap := reflect.MakeMap(iv.Type())
 		for key, value := range pathValues.fields {
 			dstKey := reflect.ValueOf(key)
