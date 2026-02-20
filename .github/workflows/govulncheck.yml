@@ -23,7 +23,7 @@ jobs:
 
       # ... such as the Code Scanning tab (https://github.com/oapi-codegen/runtime/security/code-scanning?query=is%3Aopen+branch%3Amain+tool%3Agovulncheck)
       - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@192325c86100d080feab897ff886c34abd4c83a3 # v3.30.2
+        uses: github/codeql-action/upload-sarif@45580472a5bb82c4681c4ac726cfdb60060c2ee1 # v3.32.4
         with:
           sarif_file: govulncheck.sarif
           category: govulncheck
