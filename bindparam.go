@@ -444,7 +444,24 @@ func BindQueryParameter(style string, explode bool, required bool, paramName str
 		case reflect.Slice:
 			err = bindSplitPartsToDestinationArray(parts, output)
 		case reflect.Struct:
-			err = bindSplitPartsToDestinationStruct(paramName, parts, explode, output)
+			// Some struct types (e.g. types.Date, time.Time) are scalar values
+			// that should be bound from a single string, not decomposed as
+			// key-value objects. Detect these via the Binder and
+			// TextUnmarshaler interfaces.
+			switch v := output.(type) {
+			case Binder:
+				if len(parts) != 1 {
+					return fmt.Errorf("multiple values for single value parameter '%s'", paramName)
+				}
+				err = v.Bind(parts[0])
+			case encoding.TextUnmarshaler:
+				if len(parts) != 1 {
+					return fmt.Errorf("multiple values for single value parameter '%s'", paramName)
+				}
+				err = v.UnmarshalText([]byte(parts[0]))
+			default:
+				err = bindSplitPartsToDestinationStruct(paramName, parts, explode, output)
+			}
 		default:
 			if len(parts) == 0 {
 				if required {
