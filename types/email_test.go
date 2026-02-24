@@ -76,10 +76,7 @@ func TestEmail_UnmarshalJSON_RequiredEmail_Validation(t *testing.T) {
 		"it should fail validating an invalid email": {
 			jsonStr:       `{"email":"not-an-email"}`,
 			expectedError: ErrValidationEmail,
-			expectedEmail: func() Email {
-				e := Email("not-an-email")
-				return e
-			}(),
+			expectedEmail: Email(""),
 		},
 		"it should fail validating an empty email": {
 			jsonStr: `{"email":""}`,
@@ -139,7 +136,7 @@ func TestEmail_UnmarshalJSON_NullableEmail_Validation(t *testing.T) {
 			jsonStr:       `{"email":"not-an-email"}`,
 			expectedError: ErrValidationEmail,
 			expectedEmail: func() *Email {
-				e := Email("not-an-email")
+				e := Email("")
 				return &e
 			}(),
 		},
