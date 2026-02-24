@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -71,8 +72,10 @@ func MarshalDeepObject(i interface{}, paramName string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal input to JSON: %w", err)
 	}
+	e := json.NewDecoder(bytes.NewReader(buf))
+	e.UseNumber()
 	var i2 interface{}
-	err = json.Unmarshal(buf, &i2)
+	err = e.Decode(&i2)
 	if err != nil {
 		return "", fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
