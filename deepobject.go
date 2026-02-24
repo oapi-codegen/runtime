@@ -258,11 +258,10 @@ func assignPathValues(dst interface{}, pathValues fieldOrValue) error {
 			tm, err = time.Parse(time.RFC3339Nano, pathValues.value)
 			if err != nil {
 				// Fall back to parsing it as a date.
-				_, err = time.Parse(types.DateFormat, pathValues.value) // the time result is never used, so it doesn't need to be assigned
+				tm, err = time.Parse(types.DateFormat, pathValues.value)
 				if err != nil {
 					return fmt.Errorf("error parsing '%s' as RFC3339 or 2006-01-02 time: %w", pathValues.value, err)
 				}
-				return fmt.Errorf("invalid date format: %w", err)
 			}
 			dst := iv
 			if it != reflect.TypeOf(time.Time{}) {
