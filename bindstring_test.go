@@ -14,12 +14,14 @@
 package runtime
 
 import (
+	"encoding/base64"
 	"fmt"
 	"math"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/oapi-codegen/runtime/types"
 )
@@ -209,4 +211,50 @@ func TestBindStringToObject(t *testing.T) {
 	assert.NoError(t, BindStringToObject(uuidString, &dstUUID))
 	assert.Equal(t, dstUUID.String(), uuidString)
 
+}
+
+// TestBindStringToObject_ByteSlice tests that BindStringToObject correctly handles
+// *[]byte destinations by base64-decoding the input string, rather than failing
+// or treating []byte as a generic slice.
+// See: https://github.com/oapi-codegen/runtime/issues/97
+func TestBindStringToObject_ByteSlice(t *testing.T) {
+	opts := BindStringToObjectOptions{Type: "string", Format: "byte"}
+
+	t.Run("valid base64 with padding", func(t *testing.T) {
+		var dest []byte
+		err := BindStringToObjectWithOptions("dGVzdA==", &dest, opts)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("test"), dest)
+	})
+
+	t.Run("valid base64 without padding", func(t *testing.T) {
+		var dest []byte
+		err := BindStringToObjectWithOptions("dGVzdA", &dest, opts)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("test"), dest)
+	})
+
+	t.Run("URL-safe base64", func(t *testing.T) {
+		// "<<??>>+" in standard base64 is "PDw/Pz4+" but URL-safe uses "PDw_Pz4-"
+		input := "PDw_Pz4-"
+		var dest []byte
+		err := BindStringToObjectWithOptions(input, &dest, opts)
+		require.NoError(t, err)
+		expected, decErr := base64.RawURLEncoding.DecodeString("PDw_Pz4-")
+		require.NoError(t, decErr)
+		assert.Equal(t, expected, dest)
+	})
+
+	t.Run("empty string", func(t *testing.T) {
+		var dest []byte
+		err := BindStringToObjectWithOptions("", &dest, opts)
+		require.NoError(t, err)
+		assert.Equal(t, []byte{}, dest)
+	})
+
+	t.Run("invalid base64", func(t *testing.T) {
+		var dest []byte
+		err := BindStringToObjectWithOptions("!!!not-base64!!!", &dest, opts)
+		assert.Error(t, err)
+	})
 }
