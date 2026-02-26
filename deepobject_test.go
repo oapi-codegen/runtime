@@ -123,6 +123,42 @@ type Item struct {
 	Value string `json:"value"`
 }
 
+func TestDeepObject_TimeFields(t *testing.T) {
+	type TimeObject struct {
+		Created time.Time `json:"created"`
+	}
+
+	t.Run("RFC3339 time parses correctly", func(t *testing.T) {
+		params := url.Values{}
+		params.Set("p[created]", "2024-01-15T10:30:00Z")
+
+		var dst TimeObject
+		err := UnmarshalDeepObject(&dst, "p", params)
+		require.NoError(t, err)
+		assert.Equal(t, time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC), dst.Created)
+	})
+
+	t.Run("date-only string parses correctly as time.Time", func(t *testing.T) {
+		params := url.Values{}
+		params.Set("p[created]", "2024-01-15")
+
+		var dst TimeObject
+		err := UnmarshalDeepObject(&dst, "p", params)
+		require.NoError(t, err)
+		assert.Equal(t, time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC), dst.Created)
+	})
+
+	t.Run("invalid time string returns error", func(t *testing.T) {
+		params := url.Values{}
+		params.Set("p[created]", "not-a-time")
+
+		var dst TimeObject
+		err := UnmarshalDeepObject(&dst, "p", params)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "error parsing")
+	})
+}
+
 func TestDeepObject_ArrayOfObjects(t *testing.T) {
 	// Test case for:
 	// name: items
