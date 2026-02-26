@@ -27,6 +27,95 @@ import (
 	"github.com/oapi-codegen/runtime/types"
 )
 
+// TestBindStyledParameter_ByteSlice tests that BindStyledParameterWithOptions
+// correctly handles *[]byte destinations by base64-decoding the parameter value,
+// rather than treating []byte as a generic slice and splitting on commas.
+// See: https://github.com/oapi-codegen/runtime/issues/97
+func TestBindStyledParameter_ByteSlice(t *testing.T) {
+	expected := []byte("test")
+
+	tests := []struct {
+		name    string
+		style   string
+		explode bool
+		value   string
+	}{
+		{"simple/no-explode", "simple", false, "dGVzdA=="},
+		{"simple/explode", "simple", true, "dGVzdA=="},
+		{"label/no-explode", "label", false, ".dGVzdA=="},
+		{"label/explode", "label", true, ".dGVzdA=="},
+		{"matrix/no-explode", "matrix", false, ";data=dGVzdA=="},
+		{"matrix/explode", "matrix", true, ";data=dGVzdA=="},
+		{"form/no-explode", "form", false, "data=dGVzdA=="},
+		{"form/explode", "form", true, "data=dGVzdA=="},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var dest []byte
+			err := BindStyledParameterWithOptions(tc.style, "data", tc.value, &dest, BindStyledParameterOptions{
+				ParamLocation: ParamLocationUndefined,
+				Explode:       tc.explode,
+				Required:      true,
+				Type:          "string",
+				Format:        "byte",
+			})
+			require.NoError(t, err)
+			assert.Equal(t, expected, dest)
+		})
+	}
+}
+
+// TestBindQueryParameter_ByteSlice tests that BindQueryParameter correctly
+// handles *[]byte destinations by base64-decoding the query parameter value.
+// See: https://github.com/oapi-codegen/runtime/issues/97
+func TestBindQueryParameter_ByteSlice(t *testing.T) {
+	expected := []byte("test")
+
+	opts := BindQueryParameterOptions{Type: "string", Format: "byte"}
+
+	t.Run("form/explode/required", func(t *testing.T) {
+		var dest []byte
+		queryParams := url.Values{"data": {"dGVzdA=="}}
+		err := BindQueryParameterWithOptions("form", true, true, "data", queryParams, &dest, opts)
+		require.NoError(t, err)
+		assert.Equal(t, expected, dest)
+	})
+
+	t.Run("form/no-explode/required", func(t *testing.T) {
+		var dest []byte
+		queryParams := url.Values{"data": {"dGVzdA=="}}
+		err := BindQueryParameterWithOptions("form", false, true, "data", queryParams, &dest, opts)
+		require.NoError(t, err)
+		assert.Equal(t, expected, dest)
+	})
+
+	t.Run("form/explode/optional/present", func(t *testing.T) {
+		var dest *[]byte
+		queryParams := url.Values{"data": {"dGVzdA=="}}
+		err := BindQueryParameterWithOptions("form", true, false, "data", queryParams, &dest, opts)
+		require.NoError(t, err)
+		require.NotNil(t, dest)
+		assert.Equal(t, expected, *dest)
+	})
+
+	t.Run("form/explode/optional/absent", func(t *testing.T) {
+		var dest *[]byte
+		queryParams := url.Values{}
+		err := BindQueryParameterWithOptions("form", true, false, "data", queryParams, &dest, opts)
+		require.NoError(t, err)
+		assert.Nil(t, dest)
+	})
+
+	t.Run("form/explode/optional/empty", func(t *testing.T) {
+		var dest []byte
+		queryParams := url.Values{"data": {""}}
+		err := BindQueryParameterWithOptions("form", true, false, "data", queryParams, &dest, opts)
+		require.NoError(t, err)
+		assert.Equal(t, []byte{}, dest)
+	})
+}
+
 // MockBinder is just an independent version of Binder that has the Bind implemented
 type MockBinder struct {
 	time.Time

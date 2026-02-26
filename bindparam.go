@@ -63,6 +63,12 @@ type BindStyledParameterOptions struct {
 	Explode bool
 	// Whether the parameter is required in the query
 	Required bool
+	// Type is the OpenAPI type of the parameter (e.g. "string", "integer").
+	Type string
+	// Format is the OpenAPI format of the parameter (e.g. "byte", "date-time").
+	// When set to "byte" and the destination is []byte, the value is
+	// base64-decoded rather than treated as a generic slice.
+	Format string
 }
 
 // BindStyledParameterWithOptions binds a parameter as described in the Path Parameters
@@ -121,6 +127,22 @@ func BindStyledParameterWithOptions(style string, paramName string, value string
 	}
 
 	if t.Kind() == reflect.Slice {
+		if opts.Format == "byte" && isByteSlice(t) {
+			parts, err := splitStyledParameter(style, opts.Explode, false, paramName, value)
+			if err != nil {
+				return fmt.Errorf("error splitting input '%s' into parts: %w", value, err)
+			}
+			if len(parts) != 1 {
+				return fmt.Errorf("expected single base64 value for byte slice parameter '%s', got %d parts", paramName, len(parts))
+			}
+			decoded, err := base64Decode(parts[0])
+			if err != nil {
+				return fmt.Errorf("error decoding base64 parameter '%s': %w", paramName, err)
+			}
+			v.SetBytes(decoded)
+			return nil
+		}
+
 		// Chop up the parameter into parts based on its style
 		parts, err := splitStyledParameter(style, opts.Explode, false, paramName, value)
 		if err != nil {
@@ -308,6 +330,22 @@ func bindSplitPartsToDestinationStruct(paramName string, parts []string, explode
 // the Content parameter form.
 func BindQueryParameter(style string, explode bool, required bool, paramName string,
 	queryParams url.Values, dest interface{}) error {
+	return BindQueryParameterWithOptions(style, explode, required, paramName, queryParams, dest, BindQueryParameterOptions{})
+}
+
+// BindQueryParameterOptions defines optional arguments for BindQueryParameterWithOptions.
+type BindQueryParameterOptions struct {
+	// Type is the OpenAPI type of the parameter (e.g. "string", "integer").
+	Type string
+	// Format is the OpenAPI format of the parameter (e.g. "byte", "date-time").
+	// When set to "byte" and the destination is []byte, the value is
+	// base64-decoded rather than treated as a generic slice.
+	Format string
+}
+
+// BindQueryParameterWithOptions works like BindQueryParameter with additional options.
+func BindQueryParameterWithOptions(style string, explode bool, required bool, paramName string,
+	queryParams url.Values, dest interface{}, opts BindQueryParameterOptions) error {
 
 	// dv = destination value.
 	dv := reflect.Indirect(reflect.ValueOf(dest))
@@ -378,7 +416,18 @@ func BindQueryParameter(style string, explode bool, required bool, paramName str
 						return nil
 					}
 				}
-				err = bindSplitPartsToDestinationArray(values, output)
+				if opts.Format == "byte" && isByteSlice(t) {
+					if len(values) != 1 {
+						return fmt.Errorf("expected single base64 value for byte slice parameter '%s', got %d values", paramName, len(values))
+					}
+					decoded, decErr := base64Decode(values[0])
+					if decErr != nil {
+						return fmt.Errorf("error decoding base64 parameter '%s': %w", paramName, decErr)
+					}
+					v.SetBytes(decoded)
+				} else {
+					err = bindSplitPartsToDestinationArray(values, output)
+				}
 			case reflect.Struct:
 				// This case is really annoying, and error prone, but the
 				// form style object binding doesn't tell us which arguments
@@ -442,7 +491,18 @@ func BindQueryParameter(style string, explode bool, required bool, paramName str
 		var err error
 		switch k {
 		case reflect.Slice:
-			err = bindSplitPartsToDestinationArray(parts, output)
+			if opts.Format == "byte" && isByteSlice(t) {
+				// For non-exploded form, the value was split on commas above.
+				// Rejoin to get the original base64 string.
+				raw := strings.Join(parts, ",")
+				decoded, decErr := base64Decode(raw)
+				if decErr != nil {
+					return fmt.Errorf("error decoding base64 parameter '%s': %w", paramName, decErr)
+				}
+				v.SetBytes(decoded)
+			} else {
+				err = bindSplitPartsToDestinationArray(parts, output)
+			}
 		case reflect.Struct:
 			err = bindSplitPartsToDestinationStruct(paramName, parts, explode, output)
 		default:
