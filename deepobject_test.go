@@ -206,3 +206,38 @@ func TestDeepObject_ArrayOfObjects(t *testing.T) {
 	assert.Equal(t, "second", dstArray[1].Name)
 	assert.Equal(t, "value2", dstArray[1].Value)
 }
+
+func TestDeepObject_NonIndexedArray(t *testing.T) {
+	t.Run("primitive string array", func(t *testing.T) {
+		params := url.Values{}
+		params.Add("p[vals]", "a")
+		params.Add("p[vals]", "b")
+
+		type Obj struct {
+			Vals []string `json:"vals"`
+		}
+
+		var dst Obj
+		err := UnmarshalDeepObject(&dst, "p", params)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"a", "b"}, dst.Vals)
+	})
+
+	t.Run("object with mixed scalar and non-indexed array", func(t *testing.T) {
+		params := url.Values{}
+		params.Set("p[op]", "eq")
+		params.Add("p[vals]", "a")
+		params.Add("p[vals]", "b")
+
+		type Filter struct {
+			Op   string   `json:"op"`
+			Vals []string `json:"vals"`
+		}
+
+		var dst Filter
+		err := UnmarshalDeepObject(&dst, "p", params)
+		require.NoError(t, err)
+		assert.Equal(t, "eq", dst.Op)
+		assert.Equal(t, []string{"a", "b"}, dst.Vals)
+	})
+}

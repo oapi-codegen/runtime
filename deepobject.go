@@ -136,11 +136,16 @@ func UnmarshalDeepObject(dst interface{}, paramName string, params url.Values) e
 		if strings.HasPrefix(pName, searchStr) {
 			// trim the parameter name from the full name.
 			pName = pName[len(paramName):]
-			fieldNames = append(fieldNames, pName)
-			if len(pValues) != 1 {
-				return fmt.Errorf("%s has multiple values", pName)
+			if len(pValues) == 1 {
+				fieldNames = append(fieldNames, pName)
+				fieldValues = append(fieldValues, pValues[0])
+			} else {
+				// Non-indexed array format: expand repeated keys into indexed entries
+				for i, value := range pValues {
+					fieldNames = append(fieldNames, pName+"["+strconv.Itoa(i)+"]")
+					fieldValues = append(fieldValues, value)
+				}
 			}
-			fieldValues = append(fieldValues, pValues[0])
 		}
 	}
 
