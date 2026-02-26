@@ -441,6 +441,107 @@ func TestBindQueryParameter(t *testing.T) {
 		assert.Equal(t, expected, birthday)
 	})
 
+	// Regression tests for https://github.com/oapi-codegen/runtime/issues/21
+	// types.Date should bind correctly as a query parameter in all configurations.
+	t.Run("date_form_explode_required", func(t *testing.T) {
+		expectedDate := types.Date{Time: time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}
+		var date types.Date
+		queryParams := url.Values{
+			"date": {"2023-01-01"},
+		}
+		err := BindQueryParameter("form", true, true, "date", queryParams, &date)
+		assert.NoError(t, err)
+		assert.Equal(t, expectedDate, date)
+	})
+
+	t.Run("date_form_explode_optional", func(t *testing.T) {
+		expectedDate := types.Date{Time: time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}
+		var date *types.Date
+		queryParams := url.Values{
+			"date": {"2023-01-01"},
+		}
+		err := BindQueryParameter("form", true, false, "date", queryParams, &date)
+		assert.NoError(t, err)
+		require.NotNil(t, date)
+		assert.Equal(t, expectedDate, *date)
+	})
+
+	t.Run("date_form_explode_optional_missing", func(t *testing.T) {
+		var date *types.Date
+		queryParams := url.Values{}
+		err := BindQueryParameter("form", true, false, "date", queryParams, &date)
+		assert.NoError(t, err)
+		assert.Nil(t, date)
+	})
+
+	t.Run("date_form_no_explode_required", func(t *testing.T) {
+		expectedDate := types.Date{Time: time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}
+		var date types.Date
+		queryParams := url.Values{
+			"date": {"2023-01-01"},
+		}
+		err := BindQueryParameter("form", false, true, "date", queryParams, &date)
+		assert.NoError(t, err)
+		assert.Equal(t, expectedDate, date)
+	})
+
+	t.Run("date_form_no_explode_optional", func(t *testing.T) {
+		expectedDate := types.Date{Time: time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}
+		var date *types.Date
+		queryParams := url.Values{
+			"date": {"2023-01-01"},
+		}
+		err := BindQueryParameter("form", false, false, "date", queryParams, &date)
+		assert.NoError(t, err)
+		require.NotNil(t, date)
+		assert.Equal(t, expectedDate, *date)
+	})
+
+	// time.Time has the same bug as types.Date for form/no-explode.
+	t.Run("time_form_no_explode_required", func(t *testing.T) {
+		expectedTime := time.Date(2020, 12, 9, 16, 9, 53, 0, time.UTC)
+		var ts time.Time
+		queryParams := url.Values{
+			"ts": {"2020-12-09T16:09:53Z"},
+		}
+		err := BindQueryParameter("form", false, true, "ts", queryParams, &ts)
+		assert.NoError(t, err)
+		assert.Equal(t, expectedTime, ts)
+	})
+
+	t.Run("date_in_struct_form_explode", func(t *testing.T) {
+		type Params struct {
+			Name      string     `json:"name"`
+			StartDate types.Date `json:"start_date"`
+		}
+		queryParams := url.Values{
+			"name":       {"test"},
+			"start_date": {"2023-06-15"},
+		}
+		var params Params
+		err := BindQueryParameter("form", true, true, "params", queryParams, &params)
+		assert.NoError(t, err)
+		assert.Equal(t, "test", params.Name)
+		assert.Equal(t, types.Date{Time: time.Date(2023, 6, 15, 0, 0, 0, 0, time.UTC)}, params.StartDate)
+	})
+
+	t.Run("date_pointer_in_struct_form_explode", func(t *testing.T) {
+		type Params struct {
+			Name      string      `json:"name"`
+			StartDate *types.Date `json:"start_date"`
+		}
+		queryParams := url.Values{
+			"name":       {"test"},
+			"start_date": {"2023-06-15"},
+		}
+		var params Params
+		err := BindQueryParameter("form", true, true, "params", queryParams, &params)
+		assert.NoError(t, err)
+		assert.Equal(t, "test", params.Name)
+		require.NotNil(t, params.StartDate)
+		assert.Equal(t, types.Date{Time: time.Date(2023, 6, 15, 0, 0, 0, 0, time.UTC)}, *params.StartDate)
+	})
+
 	t.Run("optional", func(t *testing.T) {
 		queryParams := url.Values{
 			"time":   {"2020-12-09T16:09:53+00:00"},
