@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/url"
+	"reflect"
 	"testing"
 	"time"
 
@@ -611,6 +612,392 @@ func TestBindParamsToExplodedObject(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, fieldsPresent)
 	assert.EqualValues(t, &now, optDstTime.Time)
+}
+
+func TestFindRawQueryParam(t *testing.T) {
+	tests := []struct {
+		name       string
+		rawQuery   string
+		paramName  string
+		wantValues []string
+		wantFound  bool
+	}{
+		{
+			name:       "simple value",
+			rawQuery:   "color=red",
+			paramName:  "color",
+			wantValues: []string{"red"},
+			wantFound:  true,
+		},
+		{
+			name:       "not found",
+			rawQuery:   "color=red",
+			paramName:  "size",
+			wantValues: nil,
+			wantFound:  false,
+		},
+		{
+			name:       "empty query",
+			rawQuery:   "",
+			paramName:  "color",
+			wantValues: nil,
+			wantFound:  false,
+		},
+		{
+			name:       "multiple values (exploded)",
+			rawQuery:   "color=red&color=blue&color=green",
+			paramName:  "color",
+			wantValues: []string{"red", "blue", "green"},
+			wantFound:  true,
+		},
+		{
+			name:       "comma in value stays encoded",
+			rawQuery:   "color=a%2Cb",
+			paramName:  "color",
+			wantValues: []string{"a%2Cb"},
+			wantFound:  true,
+		},
+		{
+			name:       "empty value",
+			rawQuery:   "color=",
+			paramName:  "color",
+			wantValues: []string{""},
+			wantFound:  true,
+		},
+		{
+			name:       "no equals sign",
+			rawQuery:   "color",
+			paramName:  "color",
+			wantValues: []string{""},
+			wantFound:  true,
+		},
+		{
+			name:       "encoded key",
+			rawQuery:   "my%20color=red",
+			paramName:  "my color",
+			wantValues: []string{"red"},
+			wantFound:  true,
+		},
+		{
+			name:       "mixed params",
+			rawQuery:   "size=large&color=red&shape=round",
+			paramName:  "color",
+			wantValues: []string{"red"},
+			wantFound:  true,
+		},
+		{
+			name:       "value with special chars",
+			rawQuery:   "color=red%26blue%3Dgreen",
+			paramName:  "color",
+			wantValues: []string{"red%26blue%3Dgreen"},
+			wantFound:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			values, found := findRawQueryParam(tt.rawQuery, tt.paramName)
+			assert.Equal(t, tt.wantFound, found)
+			assert.Equal(t, tt.wantValues, values)
+		})
+	}
+}
+
+func TestBindRawQueryParameter(t *testing.T) {
+	type TestObject struct {
+		FirstName string `json:"firstName"`
+		Role      string `json:"role"`
+	}
+
+	t.Run("form/explode=false", func(t *testing.T) {
+		t.Run("string slice simple", func(t *testing.T) {
+			var dest []string
+			err := BindRawQueryParameter("form", false, true, "color", "color=red,green,blue", &dest)
+			require.NoError(t, err)
+			assert.Equal(t, []string{"red", "green", "blue"}, dest)
+		})
+
+		t.Run("string slice with comma in value", func(t *testing.T) {
+			var dest []string
+			err := BindRawQueryParameter("form", false, true, "color", "color=a,b,c%2Cd", &dest)
+			require.NoError(t, err)
+			assert.Equal(t, []string{"a", "b", "c,d"}, dest)
+		})
+
+		t.Run("string slice with multiple special chars", func(t *testing.T) {
+			var dest []string
+			err := BindRawQueryParameter("form", false, true, "color", "color=a%2Cb,c%26d,e%3Df", &dest)
+			require.NoError(t, err)
+			assert.Equal(t, []string{"a,b", "c&d", "e=f"}, dest)
+		})
+
+		t.Run("int slice", func(t *testing.T) {
+			var dest []int
+			err := BindRawQueryParameter("form", false, true, "ids", "ids=1,2,3", &dest)
+			require.NoError(t, err)
+			assert.Equal(t, []int{1, 2, 3}, dest)
+		})
+
+		t.Run("primitive string", func(t *testing.T) {
+			var dest string
+			err := BindRawQueryParameter("form", false, true, "color", "color=red", &dest)
+			require.NoError(t, err)
+			assert.Equal(t, "red", dest)
+		})
+
+		t.Run("primitive int", func(t *testing.T) {
+			var dest int
+			err := BindRawQueryParameter("form", false, true, "count", "count=42", &dest)
+			require.NoError(t, err)
+			assert.Equal(t, 42, dest)
+		})
+
+		t.Run("struct (object)", func(t *testing.T) {
+			var dest TestObject
+			err := BindRawQueryParameter("form", false, true, "id", "id=firstName,Alex,role,admin", &dest)
+			require.NoError(t, err)
+			assert.Equal(t, TestObject{FirstName: "Alex", Role: "admin"}, dest)
+		})
+
+		t.Run("struct with encoded comma in value", func(t *testing.T) {
+			var dest TestObject
+			err := BindRawQueryParameter("form", false, true, "id", "id=firstName,Alex%2CBob,role,admin", &dest)
+			require.NoError(t, err)
+			assert.Equal(t, TestObject{FirstName: "Alex,Bob", Role: "admin"}, dest)
+		})
+
+		t.Run("required missing", func(t *testing.T) {
+			var dest []string
+			err := BindRawQueryParameter("form", false, true, "color", "other=red", &dest)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "required")
+		})
+
+		t.Run("optional missing returns nil", func(t *testing.T) {
+			var dest *[]string
+			err := BindRawQueryParameter("form", false, false, "color", "other=red", &dest)
+			require.NoError(t, err)
+			assert.Nil(t, dest)
+		})
+
+		t.Run("optional present is populated", func(t *testing.T) {
+			var dest *string
+			err := BindRawQueryParameter("form", false, false, "color", "color=red", &dest)
+			require.NoError(t, err)
+			require.NotNil(t, dest)
+			assert.Equal(t, "red", *dest)
+		})
+
+		t.Run("duplicate param errors", func(t *testing.T) {
+			var dest []string
+			err := BindRawQueryParameter("form", false, true, "color", "color=red&color=blue", &dest)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "not exploded")
+		})
+	})
+
+	t.Run("form/explode=true", func(t *testing.T) {
+		t.Run("string slice", func(t *testing.T) {
+			var dest []string
+			err := BindRawQueryParameter("form", true, true, "color", "color=red&color=green&color=blue", &dest)
+			require.NoError(t, err)
+			assert.Equal(t, []string{"red", "green", "blue"}, dest)
+		})
+
+		t.Run("int slice", func(t *testing.T) {
+			var dest []int
+			err := BindRawQueryParameter("form", true, true, "ids", "ids=1&ids=2&ids=3", &dest)
+			require.NoError(t, err)
+			assert.Equal(t, []int{1, 2, 3}, dest)
+		})
+
+		t.Run("primitive", func(t *testing.T) {
+			var dest string
+			err := BindRawQueryParameter("form", true, true, "color", "color=red", &dest)
+			require.NoError(t, err)
+			assert.Equal(t, "red", dest)
+		})
+
+		t.Run("struct", func(t *testing.T) {
+			var dest TestObject
+			err := BindRawQueryParameter("form", true, true, "id", "firstName=Alex&role=admin", &dest)
+			require.NoError(t, err)
+			assert.Equal(t, TestObject{FirstName: "Alex", Role: "admin"}, dest)
+		})
+
+		t.Run("required missing", func(t *testing.T) {
+			var dest []string
+			err := BindRawQueryParameter("form", true, true, "color", "other=red", &dest)
+			assert.Error(t, err)
+		})
+
+		t.Run("optional missing", func(t *testing.T) {
+			var dest *string
+			err := BindRawQueryParameter("form", true, false, "color", "other=red", &dest)
+			require.NoError(t, err)
+			assert.Nil(t, dest)
+		})
+	})
+
+	t.Run("deepObject/explode=true", func(t *testing.T) {
+		type ID struct {
+			FirstName *string `json:"firstName"`
+			Role      string  `json:"role"`
+		}
+		var dest ID
+		err := BindRawQueryParameter("deepObject", true, false, "id", "id%5BfirstName%5D=Alex&id%5Brole%5D=admin", &dest)
+		require.NoError(t, err)
+		expectedName := "Alex"
+		assert.Equal(t, ID{FirstName: &expectedName, Role: "admin"}, dest)
+	})
+
+	t.Run("error cases", func(t *testing.T) {
+		t.Run("deepObject explode=false", func(t *testing.T) {
+			var dest TestObject
+			err := BindRawQueryParameter("deepObject", false, true, "id", "id=foo", &dest)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "exploded")
+		})
+
+		t.Run("spaceDelimited", func(t *testing.T) {
+			var dest []string
+			err := BindRawQueryParameter("spaceDelimited", false, true, "color", "color=a%20b%20c", &dest)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "spaceDelimited")
+		})
+
+		t.Run("pipeDelimited", func(t *testing.T) {
+			var dest []string
+			err := BindRawQueryParameter("pipeDelimited", false, true, "color", "color=a|b|c", &dest)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "pipeDelimited")
+		})
+
+		t.Run("unknown style", func(t *testing.T) {
+			var dest string
+			err := BindRawQueryParameter("unknown", false, true, "color", "color=red", &dest)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "invalid")
+		})
+	})
+}
+
+func TestRoundTripQueryParameter(t *testing.T) {
+	type TestObject struct {
+		FirstName string `json:"firstName"`
+		Role      string `json:"role"`
+	}
+
+	tests := []struct {
+		name      string
+		style     string
+		explode   bool
+		paramName string
+		value     interface{}
+		dest      interface{} // pointer to zero value of dest type
+		expected  interface{} // expected value after round-trip
+	}{
+		{
+			name:      "form/false string slice",
+			style:     "form",
+			explode:   false,
+			paramName: "color",
+			value:     []string{"red", "green", "blue"},
+			dest:      &[]string{},
+			expected:  []string{"red", "green", "blue"},
+		},
+		{
+			name:      "form/false string slice with commas",
+			style:     "form",
+			explode:   false,
+			paramName: "color",
+			value:     []string{"a,b", "c", "d,e,f"},
+			dest:      &[]string{},
+			expected:  []string{"a,b", "c", "d,e,f"},
+		},
+		{
+			name:      "form/false int slice",
+			style:     "form",
+			explode:   false,
+			paramName: "ids",
+			value:     []int{1, 2, 3},
+			dest:      &[]int{},
+			expected:  []int{1, 2, 3},
+		},
+		{
+			name:      "form/false primitive string",
+			style:     "form",
+			explode:   false,
+			paramName: "color",
+			value:     "red",
+			dest:      new(string),
+			expected:  "red",
+		},
+		{
+			name:      "form/false struct",
+			style:     "form",
+			explode:   false,
+			paramName: "id",
+			value:     TestObject{FirstName: "Alex", Role: "admin"},
+			dest:      &TestObject{},
+			expected:  TestObject{FirstName: "Alex", Role: "admin"},
+		},
+		{
+			name:      "form/true string slice",
+			style:     "form",
+			explode:   true,
+			paramName: "color",
+			value:     []string{"red", "green", "blue"},
+			dest:      &[]string{},
+			expected:  []string{"red", "green", "blue"},
+		},
+		{
+			name:      "form/true int slice",
+			style:     "form",
+			explode:   true,
+			paramName: "ids",
+			value:     []int{1, 2, 3},
+			dest:      &[]int{},
+			expected:  []int{1, 2, 3},
+		},
+		{
+			name:      "form/true struct",
+			style:     "form",
+			explode:   true,
+			paramName: "id",
+			value:     TestObject{FirstName: "Alex", Role: "admin"},
+			dest:      &TestObject{},
+			expected:  TestObject{FirstName: "Alex", Role: "admin"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Serialize
+			raw, err := StyleParamWithLocation(tt.style, tt.explode, tt.paramName, ParamLocationQuery, tt.value)
+			require.NoError(t, err, "StyleParamWithLocation failed")
+
+			// Deserialize
+			err = BindRawQueryParameter(tt.style, tt.explode, true, tt.paramName, raw, tt.dest)
+			require.NoError(t, err, "BindRawQueryParameter failed for raw=%q", raw)
+
+			// Compare
+			actual := reflect.ValueOf(tt.dest).Elem().Interface()
+			assert.Equal(t, tt.expected, actual)
+		})
+	}
+
+	t.Run("deepObject/true struct", func(t *testing.T) {
+		original := TestObject{FirstName: "Alex", Role: "admin"}
+
+		raw, err := StyleParamWithLocation("deepObject", true, "id", ParamLocationQuery, original)
+		require.NoError(t, err)
+
+		var dest TestObject
+		err = BindRawQueryParameter("deepObject", true, true, "id", raw, &dest)
+		require.NoError(t, err)
+		assert.Equal(t, original, dest)
+	})
 }
 
 func TestBindStyledParameterWithLocation(t *testing.T) {

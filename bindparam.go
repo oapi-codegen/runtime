@@ -328,6 +328,11 @@ func bindSplitPartsToDestinationStruct(paramName string, parts []string, explode
 // tell them apart. This code tries to fail, but the moral of the story is that
 // you shouldn't pass objects via form styled query arguments, just use
 // the Content parameter form.
+//
+// Deprecated: BindQueryParameter pre-decodes the query string via url.Values,
+// which makes it impossible to distinguish literal commas from delimiter commas
+// in form/explode=false parameters. Use BindRawQueryParameter instead, which
+// operates on the raw query string and handles encoded delimiters correctly.
 func BindQueryParameter(style string, explode bool, required bool, paramName string,
 	queryParams url.Values, dest interface{}) error {
 	return BindQueryParameterWithOptions(style, explode, required, paramName, queryParams, dest, BindQueryParameterOptions{})
@@ -535,6 +540,201 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 	default:
 		return fmt.Errorf("style '%s' on parameter '%s' is invalid", style, paramName)
 
+	}
+}
+
+// findRawQueryParam extracts the raw (still-percent-encoded) values for a given
+// parameter name from a raw query string, without URL-decoding the values.
+// The parameter key is decoded for comparison purposes, but the returned values
+// remain in their original encoded form.
+func findRawQueryParam(rawQuery, paramName string) (values []string, found bool) {
+	for rawQuery != "" {
+		var part string
+		if i := strings.IndexByte(rawQuery, '&'); i >= 0 {
+			part = rawQuery[:i]
+			rawQuery = rawQuery[i+1:]
+		} else {
+			part = rawQuery
+			rawQuery = ""
+		}
+		if part == "" {
+			continue
+		}
+		key := part
+		var val string
+		if i := strings.IndexByte(part, '='); i >= 0 {
+			key = part[:i]
+			val = part[i+1:]
+		}
+		decodedKey, err := url.QueryUnescape(key)
+		if err != nil {
+			// Skip malformed keys.
+			continue
+		}
+		if decodedKey == paramName {
+			values = append(values, val)
+			found = true
+		}
+	}
+	return values, found
+}
+
+// BindRawQueryParameter works like BindQueryParameter but operates on the raw
+// (undecoded) query string instead of pre-parsed url.Values. This correctly
+// handles form/explode=false parameters whose values contain literal commas
+// encoded as %2C — something that BindQueryParameter cannot do because
+// url.Values has already decoded %2C to ',' before we can split on the
+// delimiter comma.
+func BindRawQueryParameter(style string, explode bool, required bool, paramName string,
+	rawQuery string, dest any) error {
+
+	// dv = destination value.
+	dv := reflect.Indirect(reflect.ValueOf(dest))
+
+	// intermediate value form which is either dv or dv dereferenced.
+	v := dv
+
+	// inner code will bind the string's value to this interface.
+	var output any
+
+	// required params are never pointers, but it may happen that optional param
+	// is not pointer as well if user decides to annotate it with
+	// x-go-type-skip-optional-pointer
+	var extraIndirect = !required && v.Kind() == reflect.Pointer
+	if !extraIndirect {
+		output = dest
+	} else {
+		if v.IsNil() {
+			t := v.Type()
+			newValue := reflect.New(t.Elem())
+			output = newValue.Interface()
+		} else {
+			output = v.Interface()
+		}
+		v = reflect.Indirect(reflect.ValueOf(output))
+	}
+
+	// This is the basic type of the destination object.
+	t := v.Type()
+	k := t.Kind()
+
+	switch style {
+	case "form":
+		if explode {
+			// For the explode case, url.ParseQuery is fine — there are no
+			// delimiter commas to confuse with literal commas.
+			queryParams, err := url.ParseQuery(rawQuery)
+			if err != nil {
+				return fmt.Errorf("error parsing query string: %w", err)
+			}
+			values, found := queryParams[paramName]
+
+			switch k {
+			case reflect.Slice:
+				if !found {
+					if required {
+						return fmt.Errorf("query parameter '%s' is required", paramName)
+					}
+					return nil
+				}
+				err = bindSplitPartsToDestinationArray(values, output)
+			case reflect.Struct:
+				var fieldsPresent bool
+				fieldsPresent, err = bindParamsToExplodedObject(paramName, queryParams, output)
+				if !fieldsPresent {
+					return nil
+				}
+			default:
+				if len(values) == 0 {
+					if required {
+						return fmt.Errorf("query parameter '%s' is required", paramName)
+					}
+					return nil
+				}
+				if len(values) != 1 {
+					return fmt.Errorf("multiple values for single value parameter '%s'", paramName)
+				}
+				if !found {
+					if required {
+						return fmt.Errorf("query parameter '%s' is required", paramName)
+					}
+					return nil
+				}
+				err = BindStringToObject(values[0], output)
+			}
+			if err != nil {
+				return err
+			}
+			if extraIndirect {
+				dv.Set(reflect.ValueOf(output))
+			}
+			return nil
+		}
+
+		// form, explode=false — the core fix.
+		// Use findRawQueryParam to get the still-encoded value, split on
+		// literal ',' (which is the OpenAPI delimiter), then URL-decode
+		// each resulting part individually.
+		rawValues, found := findRawQueryParam(rawQuery, paramName)
+		if !found {
+			if required {
+				return fmt.Errorf("query parameter '%s' is required", paramName)
+			}
+			return nil
+		}
+		if len(rawValues) != 1 {
+			return fmt.Errorf("parameter '%s' is not exploded, but is specified multiple times", paramName)
+		}
+
+		rawParts := strings.Split(rawValues[0], ",")
+		parts := make([]string, len(rawParts))
+		for i, rp := range rawParts {
+			decoded, err := url.QueryUnescape(rp)
+			if err != nil {
+				return fmt.Errorf("error decoding query parameter '%s' part %q: %w", paramName, rp, err)
+			}
+			parts[i] = decoded
+		}
+
+		var err error
+		switch k {
+		case reflect.Slice:
+			err = bindSplitPartsToDestinationArray(parts, output)
+		case reflect.Struct:
+			err = bindSplitPartsToDestinationStruct(paramName, parts, explode, output)
+		default:
+			if len(parts) == 0 {
+				if required {
+					return fmt.Errorf("query parameter '%s' is required", paramName)
+				}
+				return nil
+			}
+			if len(parts) != 1 {
+				return fmt.Errorf("multiple values for single value parameter '%s'", paramName)
+			}
+			err = BindStringToObject(parts[0], output)
+		}
+		if err != nil {
+			return err
+		}
+		if extraIndirect {
+			dv.Set(reflect.ValueOf(output))
+		}
+		return nil
+
+	case "deepObject":
+		if !explode {
+			return errors.New("deepObjects must be exploded")
+		}
+		queryParams, err := url.ParseQuery(rawQuery)
+		if err != nil {
+			return fmt.Errorf("error parsing query string: %w", err)
+		}
+		return UnmarshalDeepObject(dest, paramName, queryParams)
+	case "spaceDelimited", "pipeDelimited":
+		return fmt.Errorf("query arguments of style '%s' aren't yet supported", style)
+	default:
+		return fmt.Errorf("style '%s' on parameter '%s' is invalid", style, paramName)
 	}
 }
 
