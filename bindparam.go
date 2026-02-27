@@ -152,8 +152,16 @@ func BindStyledParameterWithOptions(style string, paramName string, value string
 		return bindSplitPartsToDestinationArray(parts, dest)
 	}
 
-	// Try to bind the remaining types as a base type.
-	return BindStringToObject(value, dest)
+	// For primitive types, we still need to strip style prefixes (e.g. label's
+	// leading "." or matrix's ";paramName=") before binding.
+	parts, err := splitStyledParameter(style, opts.Explode, false, paramName, value)
+	if err != nil {
+		return fmt.Errorf("error splitting parameter '%s': %w", paramName, err)
+	}
+	if len(parts) != 1 {
+		return fmt.Errorf("parameter '%s': expected single value, got %d parts", paramName, len(parts))
+	}
+	return BindStringToObject(parts[0], dest)
 }
 
 // This is a complex set of operations, but each given parameter style can be

@@ -1101,6 +1101,54 @@ func TestRoundTripQueryParameter(t *testing.T) {
 	})
 }
 
+func TestBindStyledParameterWithOptions_LabelPrimitive(t *testing.T) {
+	tests := []struct {
+		name    string
+		explode bool
+		value   string
+		want    int32
+	}{
+		{"non-exploded", false, ".5", 5},
+		{"exploded", true, ".5", 5},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var dest int32
+			err := BindStyledParameterWithOptions("label", "param", tt.value, &dest, BindStyledParameterOptions{
+				ParamLocation: ParamLocationPath,
+				Explode:       tt.explode,
+				Required:      true,
+			})
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, dest)
+		})
+	}
+}
+
+func TestBindStyledParameterWithOptions_MatrixPrimitive(t *testing.T) {
+	tests := []struct {
+		name    string
+		explode bool
+		value   string
+		want    int32
+	}{
+		{"non-exploded", false, ";param=5", 5},
+		{"exploded", true, ";param=5", 5},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var dest int32
+			err := BindStyledParameterWithOptions("matrix", "param", tt.value, &dest, BindStyledParameterOptions{
+				ParamLocation: ParamLocationPath,
+				Explode:       tt.explode,
+				Required:      true,
+			})
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, dest)
+		})
+	}
+}
+
 func TestBindStyledParameterWithLocation(t *testing.T) {
 	t.Run("bigNumber", func(t *testing.T) {
 		expectedBig := big.NewInt(12345678910)
