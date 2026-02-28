@@ -692,6 +692,42 @@ func TestStyleParam(t *testing.T) {
 
 }
 
+// TestStyleParam_ByteSlice tests that StyleParamWithLocation correctly handles
+// []byte values by base64-encoding them as a single string, rather than treating
+// them as a generic slice of uint8 values.
+// See: https://github.com/oapi-codegen/runtime/issues/97
+func TestStyleParam_ByteSlice(t *testing.T) {
+	input := []byte("test")
+
+	tests := []struct {
+		name     string
+		style    string
+		explode  bool
+		expected string
+	}{
+		{"simple/no-explode", "simple", false, "dGVzdA%3D%3D"},
+		{"simple/explode", "simple", true, "dGVzdA%3D%3D"},
+		{"label/no-explode", "label", false, ".dGVzdA%3D%3D"},
+		{"label/explode", "label", true, ".dGVzdA%3D%3D"},
+		{"matrix/no-explode", "matrix", false, ";data=dGVzdA%3D%3D"},
+		{"matrix/explode", "matrix", true, ";data=dGVzdA%3D%3D"},
+		{"form/no-explode", "form", false, "data=dGVzdA%3D%3D"},
+		{"form/explode", "form", true, "data=dGVzdA%3D%3D"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := StyleParamWithOptions(tc.style, tc.explode, "data", input, StyleParamOptions{
+				ParamLocation: ParamLocationQuery,
+				Type:          "string",
+				Format:        "byte",
+			})
+			assert.NoError(t, err)
+			assert.EqualValues(t, tc.expected, result)
+		})
+	}
+}
+
 // Issue 37 - https://github.com/oapi-codegen/runtime/issues/37
 func TestIssue37(t *testing.T) {
 	styles := []string{

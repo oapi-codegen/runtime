@@ -133,6 +133,7 @@ func TestMarshalForm(t *testing.T) {
 		StructSlice     []testSubStruct  `json:"struct_slice,omitempty"`
 		OptInt          *int             `json:"opt_int,omitempty"`
 		OptBool         *bool            `json:"opt_bool,omitempty"`
+		OptBoolNullable *bool            `json:"opt_bool_nullable"`
 		OptString       *string          `json:"opt_string,omitempty"`
 		OptStruct       *testSubStruct   `json:"opt_struct,omitempty"`
 		OptStructSlice  *[]testSubStruct `json:"opt_struct_slice,omitempty"`
@@ -151,6 +152,7 @@ func TestMarshalForm(t *testing.T) {
 		},
 		"opt_int=456":    {OptInt: func(v int) *int { return &v }(456)},
 		"opt_bool=true":  {OptBool: func(v bool) *bool { return &v }(true)},
+		"":               {OptBoolNullable: nil},
 		"opt_string=def": {OptString: func(v string) *string { return &v }("def")},
 		"opt_struct[int]=456&opt_struct[string]=def": {OptStruct: &testSubStruct{Int: 456, String: "def"}},
 		"opt_struct_slice[0][int]=123&opt_struct_slice[0][string]=abc&opt_struct_slice[1][int]=456&opt_struct_slice[1][string]=def": {
