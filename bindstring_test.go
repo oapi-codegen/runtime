@@ -26,6 +26,16 @@ import (
 	"github.com/oapi-codegen/runtime/types"
 )
 
+// CustomStringBinder is a string type that implements Binder but not TextUnmarshaler
+// This tests that Binder interface is checked for primitive types
+type CustomStringBinder string
+
+func (c *CustomStringBinder) Bind(src string) error {
+	// Custom binding logic: add a prefix to demonstrate the Bind method was called
+	*c = CustomStringBinder("CUSTOM:" + src)
+	return nil
+}
+
 func TestBindStringToObject(t *testing.T) {
 	var i int
 	assert.NoError(t, BindStringToObject("5", &i))
@@ -210,6 +220,12 @@ func TestBindStringToObject(t *testing.T) {
 	var dstUUID types.UUID
 	assert.NoError(t, BindStringToObject(uuidString, &dstUUID))
 	assert.Equal(t, dstUUID.String(), uuidString)
+
+	// Checks that primitive types implementing Binder are respected
+	// This tests the fix for ensuring Binder is checked before type reflection
+	var customString CustomStringBinder
+	assert.NoError(t, BindStringToObject("hello", &customString))
+	assert.Equal(t, CustomStringBinder("CUSTOM:hello"), customString)
 
 }
 
