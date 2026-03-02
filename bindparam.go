@@ -508,7 +508,7 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 			} else {
 				err = bindSplitPartsToDestinationArray(parts, output)
 			}
-		case reflect.Struct:
+		case reflect.Struct, reflect.Map:
 			// Some struct types (e.g. types.Date, time.Time) are scalar values
 			// that should be bound from a single string, not decomposed as
 			// key-value objects. Detect these via the Binder and

@@ -542,6 +542,21 @@ func TestBindQueryParameter(t *testing.T) {
 		assert.Equal(t, types.Date{Time: time.Date(2023, 6, 15, 0, 0, 0, 0, time.UTC)}, *params.StartDate)
 	})
 
+	t.Run("map_form_no_explode_optional", func(t *testing.T) {
+		want := map[string]string{
+			"foo": "bar",
+			"bim": "baz",
+		}
+		queryParams := url.Values{
+			"tags": {"foo,bar,bim,baz"},
+		}
+		var got map[string]string
+		err := BindQueryParameter("form", false, false, "tags", queryParams, &got)
+		assert.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, want, got)
+	})
+
 	t.Run("optional", func(t *testing.T) {
 		queryParams := url.Values{
 			"time":   {"2020-12-09T16:09:53+00:00"},
