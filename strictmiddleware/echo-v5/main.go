@@ -1,4 +1,4 @@
-package v5
+package echo
 
 import "github.com/labstack/echo/v5"
 
