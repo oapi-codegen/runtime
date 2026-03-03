@@ -41,3 +41,18 @@ func (d *Date) UnmarshalText(data []byte) error {
 	d.Time = parsed
 	return nil
 }
+
+// Bind implements the runtime.Binder interface so that Date is treated as a
+// scalar value when binding query parameters rather than being decomposed as
+// a struct with key-value pairs.
+func (d *Date) Bind(src string) error {
+	if src == "" {
+		return nil
+	}
+	parsed, err := time.Parse(DateFormat, src)
+	if err != nil {
+		return err
+	}
+	d.Time = parsed
+	return nil
+}
