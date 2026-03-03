@@ -551,7 +551,7 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 		if !explode {
 			return errors.New("deepObjects must be exploded")
 		}
-		return UnmarshalDeepObject(dest, paramName, queryParams)
+		return unmarshalDeepObject(dest, paramName, queryParams, required)
 	case "spaceDelimited", "pipeDelimited":
 		return fmt.Errorf("query arguments of style '%s' aren't yet supported", style)
 	default:
