@@ -145,6 +145,8 @@ func styleSlice(style string, explode bool, paramName string, paramLocation Para
 	var prefix string
 	var separator string
 
+	escapedName := escapeParameterName(paramName, paramLocation)
+
 	switch style {
 	case "simple":
 		separator = ","
@@ -156,28 +158,28 @@ func styleSlice(style string, explode bool, paramName string, paramLocation Para
 			separator = ","
 		}
 	case "matrix":
-		prefix = fmt.Sprintf(";%s=", paramName)
+		prefix = fmt.Sprintf(";%s=", escapedName)
 		if explode {
 			separator = prefix
 		} else {
 			separator = ","
 		}
 	case "form":
-		prefix = fmt.Sprintf("%s=", paramName)
+		prefix = fmt.Sprintf("%s=", escapedName)
 		if explode {
 			separator = "&" + prefix
 		} else {
 			separator = ","
 		}
 	case "spaceDelimited":
-		prefix = fmt.Sprintf("%s=", paramName)
+		prefix = fmt.Sprintf("%s=", escapedName)
 		if explode {
 			separator = "&" + prefix
 		} else {
 			separator = " "
 		}
 	case "pipeDelimited":
-		prefix = fmt.Sprintf("%s=", paramName)
+		prefix = fmt.Sprintf("%s=", escapedName)
 		if explode {
 			separator = "&" + prefix
 		} else {
@@ -355,6 +357,8 @@ func processFieldDict(style string, explode bool, paramName string, paramLocatio
 		}
 	}
 
+	escapedName := escapeParameterName(paramName, paramLocation)
+
 	var prefix string
 	var separator string
 
@@ -374,13 +378,13 @@ func processFieldDict(style string, explode bool, paramName string, paramLocatio
 			prefix = ";"
 		} else {
 			separator = ","
-			prefix = fmt.Sprintf(";%s=", paramName)
+			prefix = fmt.Sprintf(";%s=", escapedName)
 		}
 	case "form":
 		if explode {
 			separator = "&"
 		} else {
-			prefix = fmt.Sprintf("%s=", paramName)
+			prefix = fmt.Sprintf("%s=", escapedName)
 			separator = ","
 		}
 	case "deepObject":
@@ -390,7 +394,7 @@ func processFieldDict(style string, explode bool, paramName string, paramLocatio
 			}
 			for _, k := range sortedKeys(fieldDict) {
 				v := fieldDict[k]
-				part := fmt.Sprintf("%s[%s]=%s", paramName, k, v)
+				part := fmt.Sprintf("%s[%s]=%s", escapedName, k, v)
 				parts = append(parts, part)
 			}
 			separator = "&"
@@ -408,15 +412,17 @@ func stylePrimitive(style string, explode bool, paramName string, paramLocation 
 		return "", err
 	}
 
+	escapedName := escapeParameterName(paramName, paramLocation)
+
 	var prefix string
 	switch style {
 	case "simple":
 	case "label":
 		prefix = "."
 	case "matrix":
-		prefix = fmt.Sprintf(";%s=", paramName)
+		prefix = fmt.Sprintf(";%s=", escapedName)
 	case "form":
-		prefix = fmt.Sprintf("%s=", paramName)
+		prefix = fmt.Sprintf("%s=", escapedName)
 	default:
 		return "", fmt.Errorf("unsupported style '%s'", style)
 	}
@@ -491,6 +497,15 @@ func primitiveToString(value interface{}) (string, error) {
 		output = v.String()
 	}
 	return output, nil
+}
+
+// escapeParameterName escapes a parameter name for use in query strings and
+// paths. This ensures characters like [] in parameter names (e.g. user_ids[])
+// are properly percent-encoded per RFC 3986.
+func escapeParameterName(name string, paramLocation ParamLocation) string {
+	// Parameter names should always be encoded regardless of allowReserved,
+	// which only applies to values per the OpenAPI spec.
+	return escapeParameterString(name, paramLocation, false)
 }
 
 // escapeParameterString escapes a parameter value based on the location of

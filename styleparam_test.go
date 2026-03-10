@@ -845,3 +845,51 @@ func TestStyleParamAllowReserved(t *testing.T) {
 		assert.EqualValues(t, "id=123%3B456", result)
 	})
 }
+
+func TestStyleParamNameEncoding(t *testing.T) {
+	opts := StyleParamOptions{ParamLocation: ParamLocationQuery}
+
+	t.Run("brackets in param name are encoded for query", func(t *testing.T) {
+		result, err := StyleParamWithOptions("form", true, "user_ids[]", []string{"1", "100"}, opts)
+		assert.NoError(t, err)
+		assert.EqualValues(t, "user_ids%5B%5D=1&user_ids%5B%5D=100", result)
+	})
+
+	t.Run("brackets in param name non-exploded", func(t *testing.T) {
+		result, err := StyleParamWithOptions("form", false, "user_ids[]", []string{"1", "100"}, opts)
+		assert.NoError(t, err)
+		assert.EqualValues(t, "user_ids%5B%5D=1,100", result)
+	})
+
+	t.Run("brackets in primitive param name", func(t *testing.T) {
+		result, err := StyleParamWithOptions("form", false, "filter[name]", "foo", opts)
+		assert.NoError(t, err)
+		assert.EqualValues(t, "filter%5Bname%5D=foo", result)
+	})
+
+	t.Run("simple alphanumeric name unchanged", func(t *testing.T) {
+		result, err := StyleParamWithOptions("form", false, "color", "blue", opts)
+		assert.NoError(t, err)
+		assert.EqualValues(t, "color=blue", result)
+	})
+
+	t.Run("path param name not encoded", func(t *testing.T) {
+		// Path params use the name in matrix style prefix
+		result, err := StyleParamWithOptions("matrix", false, "id", "5", StyleParamOptions{
+			ParamLocation: ParamLocationPath,
+		})
+		assert.NoError(t, err)
+		assert.EqualValues(t, ";id=5", result)
+	})
+
+	t.Run("deepObject param name not yet encoded", func(t *testing.T) {
+		// NOTE: MarshalDeepObject handles its own serialization and does not
+		// currently encode param names. This documents the current behavior.
+		type Obj struct {
+			Name string `json:"name"`
+		}
+		result, err := StyleParamWithOptions("deepObject", true, "filter[]", Obj{Name: "foo"}, opts)
+		assert.NoError(t, err)
+		assert.EqualValues(t, "filter[][name]=foo", result)
+	})
+}
