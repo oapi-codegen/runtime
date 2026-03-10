@@ -756,3 +756,92 @@ func TestIssue37(t *testing.T) {
 		}
 	}
 }
+
+func TestStyleParamAllowReserved(t *testing.T) {
+	opts := func(allowReserved bool) StyleParamOptions {
+		return StyleParamOptions{
+			ParamLocation: ParamLocationQuery,
+			AllowReserved: allowReserved,
+		}
+	}
+
+	t.Run("primitive with reserved chars", func(t *testing.T) {
+		// Semicolons and colons are RFC 3986 reserved characters.
+		value := "List(79988552,27056405)"
+
+		result, err := StyleParamWithOptions("form", false, "ids", value, opts(false))
+		assert.NoError(t, err)
+		assert.EqualValues(t, "ids=List%2879988552%2C27056405%29", result, "reserved chars should be encoded when allowReserved=false")
+
+		result, err = StyleParamWithOptions("form", false, "ids", value, opts(true))
+		assert.NoError(t, err)
+		assert.EqualValues(t, "ids=List(79988552,27056405)", result, "reserved chars should be preserved when allowReserved=true")
+	})
+
+	t.Run("primitive with colons and slashes", func(t *testing.T) {
+		value := "2020-01-01T22:00:00+02:00"
+
+		result, err := StyleParamWithOptions("form", false, "ts", value, opts(false))
+		assert.NoError(t, err)
+		assert.EqualValues(t, "ts=2020-01-01T22%3A00%3A00%2B02%3A00", result)
+
+		result, err = StyleParamWithOptions("form", false, "ts", value, opts(true))
+		assert.NoError(t, err)
+		assert.EqualValues(t, "ts=2020-01-01T22:00:00+02:00", result)
+	})
+
+	t.Run("array with reserved chars in values", func(t *testing.T) {
+		values := []string{"a;b", "c:d"}
+
+		result, err := StyleParamWithOptions("form", false, "items", values, opts(false))
+		assert.NoError(t, err)
+		assert.EqualValues(t, "items=a%3Bb,c%3Ad", result)
+
+		result, err = StyleParamWithOptions("form", false, "items", values, opts(true))
+		assert.NoError(t, err)
+		assert.EqualValues(t, "items=a;b,c:d", result)
+	})
+
+	t.Run("array exploded with reserved chars", func(t *testing.T) {
+		values := []string{"a;b", "c:d"}
+
+		result, err := StyleParamWithOptions("form", true, "items", values, opts(false))
+		assert.NoError(t, err)
+		assert.EqualValues(t, "items=a%3Bb&items=c%3Ad", result)
+
+		result, err = StyleParamWithOptions("form", true, "items", values, opts(true))
+		assert.NoError(t, err)
+		assert.EqualValues(t, "items=a;b&items=c:d", result)
+	})
+
+	t.Run("spaces still encoded with allowReserved", func(t *testing.T) {
+		value := "hello world"
+
+		result, err := StyleParamWithOptions("form", false, "q", value, opts(true))
+		assert.NoError(t, err)
+		assert.EqualValues(t, "q=hello%20world", result, "spaces should still be encoded even with allowReserved=true")
+	})
+
+	t.Run("allowReserved has no effect on non-query locations", func(t *testing.T) {
+		value := "a;b"
+
+		// Path params should still encode regardless of allowReserved.
+		result, err := StyleParamWithOptions("simple", false, "id", value, StyleParamOptions{
+			ParamLocation: ParamLocationPath,
+			AllowReserved: true,
+		})
+		assert.NoError(t, err)
+		assert.EqualValues(t, "a%3Bb", result, "path params should always encode reserved chars")
+	})
+
+	t.Run("zero value preserves existing behavior", func(t *testing.T) {
+		value := "123;456"
+
+		// Default (AllowReserved: false) should match existing behavior.
+		result, err := StyleParamWithOptions("form", false, "id", value, StyleParamOptions{
+			ParamLocation: ParamLocationQuery,
+		})
+		assert.NoError(t, err)
+		assert.EqualValues(t, "id=123%3B456", result)
+	})
+}

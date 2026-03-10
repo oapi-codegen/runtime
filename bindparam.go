@@ -69,6 +69,9 @@ type BindStyledParameterOptions struct {
 	// When set to "byte" and the destination is []byte, the value is
 	// base64-decoded rather than treated as a generic slice.
 	Format string
+	// AllowReserved, when true, indicates that the parameter value may
+	// contain RFC 3986 reserved characters without percent-encoding.
+	AllowReserved bool
 }
 
 // BindStyledParameterWithOptions binds a parameter as described in the Path Parameters
@@ -346,6 +349,9 @@ type BindQueryParameterOptions struct {
 	// When set to "byte" and the destination is []byte, the value is
 	// base64-decoded rather than treated as a generic slice.
 	Format string
+	// AllowReserved, when true, indicates that the parameter value may
+	// contain RFC 3986 reserved characters without percent-encoding.
+	AllowReserved bool
 }
 
 // BindQueryParameterWithOptions works like BindQueryParameter with additional options.
