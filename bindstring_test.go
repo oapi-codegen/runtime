@@ -14,14 +14,27 @@
 package runtime
 
 import (
+	"encoding/base64"
 	"fmt"
 	"math"
 	"testing"
 	"time"
 
-	"github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/oapi-codegen/runtime/types"
 )
+
+// CustomStringBinder is a string type that implements Binder but not TextUnmarshaler
+// This tests that Binder interface is checked for primitive types
+type CustomStringBinder string
+
+func (c *CustomStringBinder) Bind(src string) error {
+	// Custom binding logic: add a prefix to demonstrate the Bind method was called
+	*c = CustomStringBinder("CUSTOM:" + src)
+	return nil
+}
 
 func TestBindStringToObject(t *testing.T) {
 	var i int
@@ -197,10 +210,10 @@ func TestBindStringToObject(t *testing.T) {
 	// Checks whether a mock binder works and embedded types
 	var mockBinder MockBinder
 	assert.NoError(t, BindStringToObject(dateString, &mockBinder))
-	assert.EqualValues(t, dateString, mockBinder.Time.Format("2006-01-02"))
+	assert.EqualValues(t, dateString, mockBinder.Format("2006-01-02"))
 	var dstEmbeddedMockBinder EmbeddedMockBinder
 	assert.NoError(t, BindStringToObject(dateString, &dstEmbeddedMockBinder))
-	assert.EqualValues(t, dateString, dstEmbeddedMockBinder.Time.Format("2006-01-02"))
+	assert.EqualValues(t, dateString, dstEmbeddedMockBinder.Format("2006-01-02"))
 
 	// Checks UUID binding
 	uuidString := "bbca1470-5e1f-4c64-ba99-fa7a6d2687b0"
@@ -208,4 +221,56 @@ func TestBindStringToObject(t *testing.T) {
 	assert.NoError(t, BindStringToObject(uuidString, &dstUUID))
 	assert.Equal(t, dstUUID.String(), uuidString)
 
+	// Checks that primitive types implementing Binder are respected
+	// This tests the fix for ensuring Binder is checked before type reflection
+	var customString CustomStringBinder
+	assert.NoError(t, BindStringToObject("hello", &customString))
+	assert.Equal(t, CustomStringBinder("CUSTOM:hello"), customString)
+
+}
+
+// TestBindStringToObject_ByteSlice tests that BindStringToObject correctly handles
+// *[]byte destinations by base64-decoding the input string, rather than failing
+// or treating []byte as a generic slice.
+// See: https://github.com/oapi-codegen/runtime/issues/97
+func TestBindStringToObject_ByteSlice(t *testing.T) {
+	opts := BindStringToObjectOptions{Type: "string", Format: "byte"}
+
+	t.Run("valid base64 with padding", func(t *testing.T) {
+		var dest []byte
+		err := BindStringToObjectWithOptions("dGVzdA==", &dest, opts)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("test"), dest)
+	})
+
+	t.Run("valid base64 without padding", func(t *testing.T) {
+		var dest []byte
+		err := BindStringToObjectWithOptions("dGVzdA", &dest, opts)
+		require.NoError(t, err)
+		assert.Equal(t, []byte("test"), dest)
+	})
+
+	t.Run("URL-safe base64", func(t *testing.T) {
+		// "<<??>>+" in standard base64 is "PDw/Pz4+" but URL-safe uses "PDw_Pz4-"
+		input := "PDw_Pz4-"
+		var dest []byte
+		err := BindStringToObjectWithOptions(input, &dest, opts)
+		require.NoError(t, err)
+		expected, decErr := base64.RawURLEncoding.DecodeString("PDw_Pz4-")
+		require.NoError(t, decErr)
+		assert.Equal(t, expected, dest)
+	})
+
+	t.Run("empty string", func(t *testing.T) {
+		var dest []byte
+		err := BindStringToObjectWithOptions("", &dest, opts)
+		require.NoError(t, err)
+		assert.Equal(t, []byte{}, dest)
+	})
+
+	t.Run("invalid base64", func(t *testing.T) {
+		var dest []byte
+		err := BindStringToObjectWithOptions("!!!not-base64!!!", &dest, opts)
+		assert.Error(t, err)
+	})
 }
