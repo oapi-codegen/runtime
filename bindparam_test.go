@@ -428,6 +428,76 @@ func TestBindQueryParameter(t *testing.T) {
 		err := BindQueryParameter("deepObject", true, false, paramName, queryParams, &actual)
 		assert.NoError(t, err)
 		assert.Equal(t, expectedDeepObject, actual)
+
+		// If we require values, we require errors when they're not present.
+		err = BindQueryParameter("deepObject", true, true, "notfound", queryParams, &actual)
+		assert.Error(t, err)
+	})
+
+	t.Run("deepObject/required-and-optional", func(t *testing.T) {
+		type SimpleObj struct {
+			Name string `json:"name"`
+			Age  int    `json:"age"`
+		}
+
+		queryWithParam := url.Values{
+			"obj[name]": {"Alice"},
+			"obj[age]":  {"30"},
+		}
+		emptyQuery := url.Values{}
+		unrelatedQuery := url.Values{
+			"other[name]": {"Bob"},
+		}
+
+		t.Run("optional/present binds successfully", func(t *testing.T) {
+			var dest SimpleObj
+			err := BindQueryParameter("deepObject", true, false, "obj", queryWithParam, &dest)
+			require.NoError(t, err)
+			assert.Equal(t, SimpleObj{Name: "Alice", Age: 30}, dest)
+		})
+
+		t.Run("optional/missing returns no error and does not modify dest", func(t *testing.T) {
+			var dest SimpleObj
+			err := BindQueryParameter("deepObject", true, false, "obj", emptyQuery, &dest)
+			require.NoError(t, err)
+			assert.Equal(t, SimpleObj{}, dest, "destination should remain zero-valued")
+		})
+
+		t.Run("optional/missing with unrelated params returns no error", func(t *testing.T) {
+			var dest SimpleObj
+			err := BindQueryParameter("deepObject", true, false, "obj", unrelatedQuery, &dest)
+			require.NoError(t, err)
+			assert.Equal(t, SimpleObj{}, dest, "destination should remain zero-valued")
+		})
+
+		t.Run("optional/missing preserves pre-populated dest", func(t *testing.T) {
+			dest := SimpleObj{Name: "PreExisting", Age: 99}
+			err := BindQueryParameter("deepObject", true, false, "obj", emptyQuery, &dest)
+			require.NoError(t, err)
+			assert.Equal(t, SimpleObj{Name: "PreExisting", Age: 99}, dest,
+				"destination should not be zeroed out when optional param is absent")
+		})
+
+		t.Run("required/present binds successfully", func(t *testing.T) {
+			var dest SimpleObj
+			err := BindQueryParameter("deepObject", true, true, "obj", queryWithParam, &dest)
+			require.NoError(t, err)
+			assert.Equal(t, SimpleObj{Name: "Alice", Age: 30}, dest)
+		})
+
+		t.Run("required/missing returns error", func(t *testing.T) {
+			var dest SimpleObj
+			err := BindQueryParameter("deepObject", true, true, "obj", emptyQuery, &dest)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "required")
+		})
+
+		t.Run("required/missing with unrelated params returns error", func(t *testing.T) {
+			var dest SimpleObj
+			err := BindQueryParameter("deepObject", true, true, "obj", unrelatedQuery, &dest)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "required")
+		})
 	})
 
 	t.Run("form", func(t *testing.T) {
