@@ -2,7 +2,7 @@ GOBASE=$(shell pwd)
 GOBIN=$(GOBASE)/bin
 
 $(GOBIN)/golangci-lint:
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOBIN) v2.10.1
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOBIN) v2.11.4
 
 .PHONY: tools
 tools: $(GOBIN)/golangci-lint
