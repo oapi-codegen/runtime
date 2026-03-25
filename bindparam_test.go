@@ -1284,3 +1284,54 @@ func TestBindStyledParameterWithLocation(t *testing.T) {
 		assert.EqualValues(t, expectedMap, dstMap)
 	})
 }
+
+// TestBindStyledParameter_HeaderWithCommas reproduces
+// https://github.com/oapi-codegen/runtime/issues/114
+// Header parameters using simple style should accept string values containing
+// commas without treating them as array delimiters.
+func TestBindStyledParameter_HeaderWithCommas(t *testing.T) {
+	t.Run("primitive string with commas", func(t *testing.T) {
+		var dest string
+		// A JSON string header value that happens to contain commas.
+		err := BindStyledParameterWithOptions("simple", "X-My-Header", `{"key":"value","other":"data"}`, &dest, BindStyledParameterOptions{
+			ParamLocation: ParamLocationHeader,
+			Explode:       false,
+			Required:      true,
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, `{"key":"value","other":"data"}`, dest)
+	})
+
+	t.Run("primitive string with many commas", func(t *testing.T) {
+		var dest string
+		err := BindStyledParameterWithOptions("simple", "X-My-Header", "a,b,c,d,e", &dest, BindStyledParameterOptions{
+			ParamLocation: ParamLocationHeader,
+			Explode:       false,
+			Required:      true,
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, "a,b,c,d,e", dest)
+	})
+
+	t.Run("primitive string without commas still works", func(t *testing.T) {
+		var dest string
+		err := BindStyledParameterWithOptions("simple", "X-My-Header", "simple-value", &dest, BindStyledParameterOptions{
+			ParamLocation: ParamLocationHeader,
+			Explode:       false,
+			Required:      true,
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, "simple-value", dest)
+	})
+
+	t.Run("array of strings still splits on commas", func(t *testing.T) {
+		var dest []string
+		err := BindStyledParameterWithOptions("simple", "X-My-Header", "a,b,c", &dest, BindStyledParameterOptions{
+			ParamLocation: ParamLocationHeader,
+			Explode:       false,
+			Required:      true,
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"a", "b", "c"}, dest)
+	})
+}
