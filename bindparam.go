@@ -26,6 +26,17 @@ import (
 	"github.com/oapi-codegen/runtime/types"
 )
 
+// RequiredParameterError is returned when a required query parameter is missing.
+// Generated server code can use errors.As to detect this and produce a
+// framework-specific typed error for the application's error handler.
+type RequiredParameterError struct {
+	ParamName string
+}
+
+func (e *RequiredParameterError) Error() string {
+	return fmt.Sprintf("query parameter '%s' is required", e.ParamName)
+}
+
 // BindStyledParameter binds a parameter as described in the Path Parameters
 // section here to a Go object:
 // https://swagger.io/docs/specification/serialization/
@@ -417,13 +428,17 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 	k := t.Kind()
 
 	switch style {
-	case "form":
+	case "form", "spaceDelimited", "pipeDelimited":
 		var parts []string
 		if explode {
 			// ok, the explode case in query arguments is very, very annoying,
 			// because an exploded object, such as /users?role=admin&firstName=Alex
 			// isn't actually present in the parameter array. We have to do
 			// different things based on destination type.
+			//
+			// Note: spaceDelimited and pipeDelimited with explode=true are
+			// serialized identically to form explode=true (each value is a
+			// separate key=value pair), so we share this code path.
 			values, found := queryParams[paramName]
 			var err error
 
@@ -434,7 +449,7 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 
 				if !found {
 					if required {
-						return fmt.Errorf("query parameter '%s' is required", paramName)
+						return &RequiredParameterError{ParamName: paramName}
 					} else {
 						// If an optional parameter is not found, we do nothing,
 						return nil
@@ -469,7 +484,7 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 				// unmarshal.
 				if len(values) == 0 {
 					if required {
-						return fmt.Errorf("query parameter '%s' is required", paramName)
+						return &RequiredParameterError{ParamName: paramName}
 					} else {
 						return nil
 					}
@@ -480,7 +495,7 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 
 				if !found {
 					if required {
-						return fmt.Errorf("query parameter '%s' is required", paramName)
+						return &RequiredParameterError{ParamName: paramName}
 					} else {
 						// If an optional parameter is not found, we do nothing,
 						return nil
@@ -502,7 +517,7 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 			values, found := queryParams[paramName]
 			if !found {
 				if required {
-					return fmt.Errorf("query parameter '%s' is required", paramName)
+					return &RequiredParameterError{ParamName: paramName}
 				} else {
 					return nil
 				}
@@ -510,7 +525,14 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 			if len(values) != 1 {
 				return fmt.Errorf("parameter '%s' is not exploded, but is specified multiple times", paramName)
 			}
-			parts = strings.Split(values[0], ",")
+			switch style {
+			case "spaceDelimited":
+				parts = strings.Split(values[0], " ")
+			case "pipeDelimited":
+				parts = strings.Split(values[0], "|")
+			default:
+				parts = strings.Split(values[0], ",")
+			}
 		}
 		var err error
 		switch k {
@@ -549,7 +571,7 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 		default:
 			if len(parts) == 0 {
 				if required {
-					return fmt.Errorf("query parameter '%s' is required", paramName)
+					return &RequiredParameterError{ParamName: paramName}
 				} else {
 					return nil
 				}
@@ -571,8 +593,6 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 			return errors.New("deepObjects must be exploded")
 		}
 		return unmarshalDeepObject(dest, paramName, queryParams, required)
-	case "spaceDelimited", "pipeDelimited":
-		return fmt.Errorf("query arguments of style '%s' aren't yet supported", style)
 	default:
 		return fmt.Errorf("style '%s' on parameter '%s' is invalid", style, paramName)
 
@@ -655,10 +675,14 @@ func BindRawQueryParameter(style string, explode bool, required bool, paramName 
 	k := t.Kind()
 
 	switch style {
-	case "form":
+	case "form", "spaceDelimited", "pipeDelimited":
 		if explode {
 			// For the explode case, url.ParseQuery is fine — there are no
 			// delimiter commas to confuse with literal commas.
+			//
+			// Note: spaceDelimited and pipeDelimited with explode=true are
+			// serialized identically to form explode=true (each value is a
+			// separate key=value pair), so we share this code path.
 			queryParams, err := url.ParseQuery(rawQuery)
 			if err != nil {
 				return fmt.Errorf("error parsing query string: %w", err)
@@ -669,7 +693,7 @@ func BindRawQueryParameter(style string, explode bool, required bool, paramName 
 			case reflect.Slice:
 				if !found {
 					if required {
-						return fmt.Errorf("query parameter '%s' is required", paramName)
+						return &RequiredParameterError{ParamName: paramName}
 					}
 					return nil
 				}
@@ -683,7 +707,7 @@ func BindRawQueryParameter(style string, explode bool, required bool, paramName 
 			default:
 				if len(values) == 0 {
 					if required {
-						return fmt.Errorf("query parameter '%s' is required", paramName)
+						return &RequiredParameterError{ParamName: paramName}
 					}
 					return nil
 				}
@@ -692,7 +716,7 @@ func BindRawQueryParameter(style string, explode bool, required bool, paramName 
 				}
 				if !found {
 					if required {
-						return fmt.Errorf("query parameter '%s' is required", paramName)
+						return &RequiredParameterError{ParamName: paramName}
 					}
 					return nil
 				}
@@ -707,14 +731,13 @@ func BindRawQueryParameter(style string, explode bool, required bool, paramName 
 			return nil
 		}
 
-		// form, explode=false — the core fix.
-		// Use findRawQueryParam to get the still-encoded value, split on
-		// literal ',' (which is the OpenAPI delimiter), then URL-decode
+		// explode=false — use findRawQueryParam to get the still-encoded
+		// value, split on the style-specific delimiter, then URL-decode
 		// each resulting part individually.
 		rawValues, found := findRawQueryParam(rawQuery, paramName)
 		if !found {
 			if required {
-				return fmt.Errorf("query parameter '%s' is required", paramName)
+				return &RequiredParameterError{ParamName: paramName}
 			}
 			return nil
 		}
@@ -722,7 +745,19 @@ func BindRawQueryParameter(style string, explode bool, required bool, paramName 
 			return fmt.Errorf("parameter '%s' is not exploded, but is specified multiple times", paramName)
 		}
 
-		rawParts := strings.Split(rawValues[0], ",")
+		var rawParts []string
+		switch style {
+		case "spaceDelimited":
+			// Normalise all space representations to %20, then split.
+			normalized := strings.ReplaceAll(rawValues[0], "+", "%20")
+			normalized = strings.ReplaceAll(normalized, " ", "%20")
+			rawParts = strings.Split(normalized, "%20")
+		case "pipeDelimited":
+			rawParts = strings.Split(rawValues[0], "|")
+		default:
+			rawParts = strings.Split(rawValues[0], ",")
+		}
+
 		parts := make([]string, len(rawParts))
 		for i, rp := range rawParts {
 			decoded, err := url.QueryUnescape(rp)
@@ -741,7 +776,7 @@ func BindRawQueryParameter(style string, explode bool, required bool, paramName 
 		default:
 			if len(parts) == 0 {
 				if required {
-					return fmt.Errorf("query parameter '%s' is required", paramName)
+					return &RequiredParameterError{ParamName: paramName}
 				}
 				return nil
 			}
@@ -767,8 +802,6 @@ func BindRawQueryParameter(style string, explode bool, required bool, paramName 
 			return fmt.Errorf("error parsing query string: %w", err)
 		}
 		return UnmarshalDeepObject(dest, paramName, queryParams)
-	case "spaceDelimited", "pipeDelimited":
-		return fmt.Errorf("query arguments of style '%s' aren't yet supported", style)
 	default:
 		return fmt.Errorf("style '%s' on parameter '%s' is invalid", style, paramName)
 	}
