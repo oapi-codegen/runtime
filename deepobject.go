@@ -16,11 +16,6 @@ import (
 	"github.com/oapi-codegen/runtime/types"
 )
 
-type nullableLike interface {
-	SetNull()
-	UnmarshalJSON(data []byte) error
-}
-
 func marshalDeepObject(in interface{}, path []string) ([]string, error) {
 	var result []string
 
@@ -233,52 +228,8 @@ func assignPathValues(dst interface{}, pathValues fieldOrValue) error {
 	iv := reflect.Indirect(v)
 	it := iv.Type()
 
-	switch dst := v.Interface().(type) {
-	case Binder:
-		return dst.Bind(pathValues.value)
-	case encoding.TextUnmarshaler:
-		err := dst.UnmarshalText([]byte(pathValues.value))
-		if err != nil {
-			return fmt.Errorf("error unmarshalling text '%s': %w", pathValues.value, err)
-		}
-
-		return nil
-	}
-
 	switch it.Kind() {
 	case reflect.Map:
-		// If the value looks like nullable.Nullable[T], we need to handle it properly.
-		if dst, ok := dst.(nullableLike); ok {
-			if pathValues.value == "null" {
-				dst.SetNull()
-
-				return nil
-			}
-
-			// We create a new empty value, who's type is the same as the
-			// 'T' in nullable.Nullable[T]. Because of how nullable.Nullable is
-			// implemented, we can do that by getting the type's element type.
-			data := reflect.New(it.Elem()).Interface()
-
-			// We now try to assign the path values to the new type.
-			if err := assignPathValues(data, pathValues); err != nil {
-				return err
-			}
-
-			// We'll marshal the data so that we can unmarshal it into
-			// the original nullable.Nullable value.
-			dataBytes, err := json.Marshal(data)
-			if err != nil {
-				return err
-			}
-
-			if err := dst.UnmarshalJSON(dataBytes); err != nil {
-				return err
-			}
-
-			return nil
-		}
-
 		dstMap := reflect.MakeMap(iv.Type())
 		for key, value := range pathValues.fields {
 			dstKey := reflect.ValueOf(key)
@@ -326,6 +277,7 @@ func assignPathValues(dst interface{}, pathValues fieldOrValue) error {
 				dst = reflect.Indirect(aPtr)
 			}
 			dst.Set(reflect.ValueOf(date))
+			return nil
 		}
 		if it.ConvertibleTo(reflect.TypeOf(time.Time{})) {
 			var tm time.Time
@@ -346,6 +298,13 @@ func assignPathValues(dst interface{}, pathValues fieldOrValue) error {
 				dst = reflect.Indirect(aPtr)
 			}
 			dst.Set(reflect.ValueOf(tm))
+			return nil
+		}
+		// For other struct types that implement TextUnmarshaler (e.g. uuid.UUID),
+		// use that for binding. This comes after the legacy Date/time.Time checks
+		// above which have special fallback format handling.
+		if tu, ok := v.Interface().(encoding.TextUnmarshaler); ok {
+			return tu.UnmarshalText([]byte(pathValues.value))
 		}
 		fieldMap, err := fieldIndicesByJSONTag(iv.Interface())
 		if err != nil {
