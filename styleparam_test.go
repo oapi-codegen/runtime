@@ -14,11 +14,12 @@
 package runtime
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
-	"github.com/oapi-codegen/runtime/types"
 	"github.com/google/uuid"
+	"github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -689,4 +690,206 @@ func TestStyleParam(t *testing.T) {
 	assert.NoError(t, err)
 	assert.EqualValues(t, "972beb41-e5ea-4b31-a79a-96f4999d8769", result)
 
+}
+
+// TestStyleParam_ByteSlice tests that StyleParamWithLocation correctly handles
+// []byte values by base64-encoding them as a single string, rather than treating
+// them as a generic slice of uint8 values.
+// See: https://github.com/oapi-codegen/runtime/issues/97
+func TestStyleParam_ByteSlice(t *testing.T) {
+	input := []byte("test")
+
+	tests := []struct {
+		name     string
+		style    string
+		explode  bool
+		expected string
+	}{
+		{"simple/no-explode", "simple", false, "dGVzdA%3D%3D"},
+		{"simple/explode", "simple", true, "dGVzdA%3D%3D"},
+		{"label/no-explode", "label", false, ".dGVzdA%3D%3D"},
+		{"label/explode", "label", true, ".dGVzdA%3D%3D"},
+		{"matrix/no-explode", "matrix", false, ";data=dGVzdA%3D%3D"},
+		{"matrix/explode", "matrix", true, ";data=dGVzdA%3D%3D"},
+		{"form/no-explode", "form", false, "data=dGVzdA%3D%3D"},
+		{"form/explode", "form", true, "data=dGVzdA%3D%3D"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := StyleParamWithOptions(tc.style, tc.explode, "data", input, StyleParamOptions{
+				ParamLocation: ParamLocationQuery,
+				Type:          "string",
+				Format:        "byte",
+			})
+			assert.NoError(t, err)
+			assert.EqualValues(t, tc.expected, result)
+		})
+	}
+}
+
+// Issue 37 - https://github.com/oapi-codegen/runtime/issues/37
+func TestIssue37(t *testing.T) {
+	styles := []string{
+		"simple",
+		"spaceDelimited",
+		"pipeDelimited",
+		"deepObject",
+		"form",
+		"matrix",
+		"label",
+	}
+	values := []struct {
+		name  string
+		value interface{}
+	}{
+		{"int", map[string]int{"k1": 1, "k2": 2, "k3": 3}},
+		{"string", map[string]string{"k1": "v1", "k2": "v2", "k3": "v3"}},
+		{"any", map[string]any{"k1": "v1", "k2": 2, "k3": 3.5}},
+	}
+	for _, style := range styles {
+		for _, value := range values {
+			t.Run(fmt.Sprintf("%s %s", value.name, style), func(t *testing.T) {
+				_, err := StyleParamWithLocation("form", true, "priority", ParamLocationQuery, value.value)
+				assert.NoError(t, err)
+			})
+		}
+	}
+}
+
+func TestStyleParamAllowReserved(t *testing.T) {
+	opts := func(allowReserved bool) StyleParamOptions {
+		return StyleParamOptions{
+			ParamLocation: ParamLocationQuery,
+			AllowReserved: allowReserved,
+		}
+	}
+
+	t.Run("primitive with reserved chars", func(t *testing.T) {
+		// Semicolons and colons are RFC 3986 reserved characters.
+		value := "List(79988552,27056405)"
+
+		result, err := StyleParamWithOptions("form", false, "ids", value, opts(false))
+		assert.NoError(t, err)
+		assert.EqualValues(t, "ids=List%2879988552%2C27056405%29", result, "reserved chars should be encoded when allowReserved=false")
+
+		result, err = StyleParamWithOptions("form", false, "ids", value, opts(true))
+		assert.NoError(t, err)
+		assert.EqualValues(t, "ids=List(79988552,27056405)", result, "reserved chars should be preserved when allowReserved=true")
+	})
+
+	t.Run("primitive with colons and slashes", func(t *testing.T) {
+		value := "2020-01-01T22:00:00+02:00"
+
+		result, err := StyleParamWithOptions("form", false, "ts", value, opts(false))
+		assert.NoError(t, err)
+		assert.EqualValues(t, "ts=2020-01-01T22%3A00%3A00%2B02%3A00", result)
+
+		result, err = StyleParamWithOptions("form", false, "ts", value, opts(true))
+		assert.NoError(t, err)
+		assert.EqualValues(t, "ts=2020-01-01T22:00:00+02:00", result)
+	})
+
+	t.Run("array with reserved chars in values", func(t *testing.T) {
+		values := []string{"a;b", "c:d"}
+
+		result, err := StyleParamWithOptions("form", false, "items", values, opts(false))
+		assert.NoError(t, err)
+		assert.EqualValues(t, "items=a%3Bb,c%3Ad", result)
+
+		result, err = StyleParamWithOptions("form", false, "items", values, opts(true))
+		assert.NoError(t, err)
+		assert.EqualValues(t, "items=a;b,c:d", result)
+	})
+
+	t.Run("array exploded with reserved chars", func(t *testing.T) {
+		values := []string{"a;b", "c:d"}
+
+		result, err := StyleParamWithOptions("form", true, "items", values, opts(false))
+		assert.NoError(t, err)
+		assert.EqualValues(t, "items=a%3Bb&items=c%3Ad", result)
+
+		result, err = StyleParamWithOptions("form", true, "items", values, opts(true))
+		assert.NoError(t, err)
+		assert.EqualValues(t, "items=a;b&items=c:d", result)
+	})
+
+	t.Run("spaces still encoded with allowReserved", func(t *testing.T) {
+		value := "hello world"
+
+		result, err := StyleParamWithOptions("form", false, "q", value, opts(true))
+		assert.NoError(t, err)
+		assert.EqualValues(t, "q=hello%20world", result, "spaces should still be encoded even with allowReserved=true")
+	})
+
+	t.Run("allowReserved has no effect on non-query locations", func(t *testing.T) {
+		value := "a;b"
+
+		// Path params should still encode regardless of allowReserved.
+		result, err := StyleParamWithOptions("simple", false, "id", value, StyleParamOptions{
+			ParamLocation: ParamLocationPath,
+			AllowReserved: true,
+		})
+		assert.NoError(t, err)
+		assert.EqualValues(t, "a%3Bb", result, "path params should always encode reserved chars")
+	})
+
+	t.Run("zero value preserves existing behavior", func(t *testing.T) {
+		value := "123;456"
+
+		// Default (AllowReserved: false) should match existing behavior.
+		result, err := StyleParamWithOptions("form", false, "id", value, StyleParamOptions{
+			ParamLocation: ParamLocationQuery,
+		})
+		assert.NoError(t, err)
+		assert.EqualValues(t, "id=123%3B456", result)
+	})
+}
+
+func TestStyleParamNameEncoding(t *testing.T) {
+	opts := StyleParamOptions{ParamLocation: ParamLocationQuery}
+
+	t.Run("brackets in param name are encoded for query", func(t *testing.T) {
+		result, err := StyleParamWithOptions("form", true, "user_ids[]", []string{"1", "100"}, opts)
+		assert.NoError(t, err)
+		assert.EqualValues(t, "user_ids%5B%5D=1&user_ids%5B%5D=100", result)
+	})
+
+	t.Run("brackets in param name non-exploded", func(t *testing.T) {
+		result, err := StyleParamWithOptions("form", false, "user_ids[]", []string{"1", "100"}, opts)
+		assert.NoError(t, err)
+		assert.EqualValues(t, "user_ids%5B%5D=1,100", result)
+	})
+
+	t.Run("brackets in primitive param name", func(t *testing.T) {
+		result, err := StyleParamWithOptions("form", false, "filter[name]", "foo", opts)
+		assert.NoError(t, err)
+		assert.EqualValues(t, "filter%5Bname%5D=foo", result)
+	})
+
+	t.Run("simple alphanumeric name unchanged", func(t *testing.T) {
+		result, err := StyleParamWithOptions("form", false, "color", "blue", opts)
+		assert.NoError(t, err)
+		assert.EqualValues(t, "color=blue", result)
+	})
+
+	t.Run("path param name not encoded", func(t *testing.T) {
+		// Path params use the name in matrix style prefix
+		result, err := StyleParamWithOptions("matrix", false, "id", "5", StyleParamOptions{
+			ParamLocation: ParamLocationPath,
+		})
+		assert.NoError(t, err)
+		assert.EqualValues(t, ";id=5", result)
+	})
+
+	t.Run("deepObject param name not yet encoded", func(t *testing.T) {
+		// NOTE: MarshalDeepObject handles its own serialization and does not
+		// currently encode param names. This documents the current behavior.
+		type Obj struct {
+			Name string `json:"name"`
+		}
+		result, err := StyleParamWithOptions("deepObject", true, "filter[]", Obj{Name: "foo"}, opts)
+		assert.NoError(t, err)
+		assert.EqualValues(t, "filter[][name]=foo", result)
+	})
 }

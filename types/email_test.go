@@ -22,6 +22,11 @@ func TestEmail_MarshalJSON_Validation(t *testing.T) {
 			expectedJSON:  []byte(`{"email":"validemail@openapicodegen.com"}`),
 			expectedError: nil,
 		},
+		"it should succeed marshalling a valid email and return valid JSON populated with the email with valid separators": {
+			email:         Email("validemail+with_valid-separator{like}~these*ones@openapicodegen.com"),
+			expectedJSON:  []byte(`{"email":"validemail+with_valid-separator{like}~these*ones@openapicodegen.com"}`),
+			expectedError: nil,
+		},
 		"it should fail marshalling an invalid email and return a validation error": {
 			email:         Email("invalidemail"),
 			expectedJSON:  nil,
@@ -71,10 +76,7 @@ func TestEmail_UnmarshalJSON_RequiredEmail_Validation(t *testing.T) {
 		"it should fail validating an invalid email": {
 			jsonStr:       `{"email":"not-an-email"}`,
 			expectedError: ErrValidationEmail,
-			expectedEmail: func() Email {
-				e := Email("not-an-email")
-				return e
-			}(),
+			expectedEmail: Email(""),
 		},
 		"it should fail validating an empty email": {
 			jsonStr: `{"email":""}`,
@@ -134,7 +136,7 @@ func TestEmail_UnmarshalJSON_NullableEmail_Validation(t *testing.T) {
 			jsonStr:       `{"email":"not-an-email"}`,
 			expectedError: ErrValidationEmail,
 			expectedEmail: func() *Email {
-				e := Email("not-an-email")
+				e := Email("")
 				return &e
 			}(),
 		},
