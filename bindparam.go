@@ -26,6 +26,17 @@ import (
 	"github.com/oapi-codegen/runtime/types"
 )
 
+// RequiredParameterError is returned when a required query parameter is missing.
+// Generated server code can use errors.As to detect this and produce a
+// framework-specific typed error for the application's error handler.
+type RequiredParameterError struct {
+	ParamName string
+}
+
+func (e *RequiredParameterError) Error() string {
+	return fmt.Sprintf("query parameter '%s' is required", e.ParamName)
+}
+
 // BindStyledParameter binds a parameter as described in the Path Parameters
 // section here to a Go object:
 // https://swagger.io/docs/specification/serialization/
@@ -438,7 +449,7 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 
 				if !found {
 					if required {
-						return fmt.Errorf("query parameter '%s' is required", paramName)
+						return &RequiredParameterError{ParamName: paramName}
 					} else {
 						// If an optional parameter is not found, we do nothing,
 						return nil
@@ -473,7 +484,7 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 				// unmarshal.
 				if len(values) == 0 {
 					if required {
-						return fmt.Errorf("query parameter '%s' is required", paramName)
+						return &RequiredParameterError{ParamName: paramName}
 					} else {
 						return nil
 					}
@@ -484,7 +495,7 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 
 				if !found {
 					if required {
-						return fmt.Errorf("query parameter '%s' is required", paramName)
+						return &RequiredParameterError{ParamName: paramName}
 					} else {
 						// If an optional parameter is not found, we do nothing,
 						return nil
@@ -506,7 +517,7 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 			values, found := queryParams[paramName]
 			if !found {
 				if required {
-					return fmt.Errorf("query parameter '%s' is required", paramName)
+					return &RequiredParameterError{ParamName: paramName}
 				} else {
 					return nil
 				}
@@ -560,7 +571,7 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 		default:
 			if len(parts) == 0 {
 				if required {
-					return fmt.Errorf("query parameter '%s' is required", paramName)
+					return &RequiredParameterError{ParamName: paramName}
 				} else {
 					return nil
 				}
@@ -682,7 +693,7 @@ func BindRawQueryParameter(style string, explode bool, required bool, paramName 
 			case reflect.Slice:
 				if !found {
 					if required {
-						return fmt.Errorf("query parameter '%s' is required", paramName)
+						return &RequiredParameterError{ParamName: paramName}
 					}
 					return nil
 				}
@@ -696,7 +707,7 @@ func BindRawQueryParameter(style string, explode bool, required bool, paramName 
 			default:
 				if len(values) == 0 {
 					if required {
-						return fmt.Errorf("query parameter '%s' is required", paramName)
+						return &RequiredParameterError{ParamName: paramName}
 					}
 					return nil
 				}
@@ -705,7 +716,7 @@ func BindRawQueryParameter(style string, explode bool, required bool, paramName 
 				}
 				if !found {
 					if required {
-						return fmt.Errorf("query parameter '%s' is required", paramName)
+						return &RequiredParameterError{ParamName: paramName}
 					}
 					return nil
 				}
@@ -726,7 +737,7 @@ func BindRawQueryParameter(style string, explode bool, required bool, paramName 
 		rawValues, found := findRawQueryParam(rawQuery, paramName)
 		if !found {
 			if required {
-				return fmt.Errorf("query parameter '%s' is required", paramName)
+				return &RequiredParameterError{ParamName: paramName}
 			}
 			return nil
 		}
@@ -765,7 +776,7 @@ func BindRawQueryParameter(style string, explode bool, required bool, paramName 
 		default:
 			if len(parts) == 0 {
 				if required {
-					return fmt.Errorf("query parameter '%s' is required", paramName)
+					return &RequiredParameterError{ParamName: paramName}
 				}
 				return nil
 			}
