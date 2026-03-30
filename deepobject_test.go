@@ -63,6 +63,7 @@ func TestDeepObject(t *testing.T) {
 	om := map[string]int{
 		"additional": 1,
 	}
+
 	d := MockBinder{Time: time.Date(2020, 2, 1, 0, 0, 0, 0, time.UTC)}
 
 	two := 2
