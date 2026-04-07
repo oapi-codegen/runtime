@@ -510,6 +510,24 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 			if len(values) != 1 {
 				return fmt.Errorf("parameter '%s' is not exploded, but is specified multiple times", paramName)
 			}
+
+			// For primitive types, the raw value should be used as-is
+			// without splitting on commas. Per the OpenAPI specification,
+			// explode has no effect on primitive types — the serialization
+			// is the same regardless of the explode value. Comma splitting
+			// is only meaningful for array and object types.
+			// See: https://swagger.io/docs/specification/serialization/
+			if k != reflect.Slice && k != reflect.Struct && k != reflect.Map {
+				err := BindStringToObject(values[0], output)
+				if err != nil {
+					return err
+				}
+				if extraIndirect {
+					dv.Set(reflect.ValueOf(output))
+				}
+				return nil
+			}
+
 			parts = strings.Split(values[0], ",")
 		}
 		var err error
@@ -547,6 +565,9 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 				err = bindSplitPartsToDestinationStruct(paramName, parts, explode, output)
 			}
 		default:
+			// This case is now unreachable for form style with explode=false,
+			// as primitive types are handled above before comma splitting.
+			// It remains for other styles that may reach here.
 			if len(parts) == 0 {
 				if required {
 					return fmt.Errorf("query parameter '%s' is required", paramName)
@@ -722,6 +743,25 @@ func BindRawQueryParameter(style string, explode bool, required bool, paramName 
 			return fmt.Errorf("parameter '%s' is not exploded, but is specified multiple times", paramName)
 		}
 
+		// For primitive types, decode the raw value as-is without splitting
+		// on commas. Per the OpenAPI specification, explode has no effect on
+		// primitive types. Comma splitting is only meaningful for array and
+		// object types.
+		if k != reflect.Slice && k != reflect.Struct && k != reflect.Map {
+			decoded, err := url.QueryUnescape(rawValues[0])
+			if err != nil {
+				return fmt.Errorf("error decoding query parameter '%s' value %q: %w", paramName, rawValues[0], err)
+			}
+			err = BindStringToObject(decoded, output)
+			if err != nil {
+				return err
+			}
+			if extraIndirect {
+				dv.Set(reflect.ValueOf(output))
+			}
+			return nil
+		}
+
 		rawParts := strings.Split(rawValues[0], ",")
 		parts := make([]string, len(rawParts))
 		for i, rp := range rawParts {
@@ -739,6 +779,8 @@ func BindRawQueryParameter(style string, explode bool, required bool, paramName 
 		case reflect.Struct:
 			err = bindSplitPartsToDestinationStruct(paramName, parts, explode, output)
 		default:
+			// Unreachable for form style with explode=false, as primitive
+			// types are handled above. Remains for other styles.
 			if len(parts) == 0 {
 				if required {
 					return fmt.Errorf("query parameter '%s' is required", paramName)

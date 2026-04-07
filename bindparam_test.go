@@ -567,6 +567,30 @@ func TestBindQueryParameter(t *testing.T) {
 		assert.Equal(t, expectedDate, *date)
 	})
 
+	// Regression test: primitive string with explode=false should not be
+	// split on commas. Per the OpenAPI specification, explode has no effect
+	// on primitive types — the value must be bound as-is.
+	t.Run("string_form_no_explode_required_with_commas", func(t *testing.T) {
+		var scope string
+		queryParams := url.Values{
+			"scope": {"openid,profile,email"},
+		}
+		err := BindQueryParameter("form", false, true, "scope", queryParams, &scope)
+		assert.NoError(t, err)
+		assert.Equal(t, "openid,profile,email", scope)
+	})
+
+	t.Run("string_form_no_explode_optional_with_commas", func(t *testing.T) {
+		var scope *string
+		queryParams := url.Values{
+			"scope": {"openid,profile,email"},
+		}
+		err := BindQueryParameter("form", false, false, "scope", queryParams, &scope)
+		assert.NoError(t, err)
+		require.NotNil(t, scope)
+		assert.Equal(t, "openid,profile,email", *scope)
+	})
+
 	// time.Time has the same bug as types.Date for form/no-explode.
 	t.Run("time_form_no_explode_required", func(t *testing.T) {
 		expectedTime := time.Date(2020, 12, 9, 16, 9, 53, 0, time.UTC)
@@ -972,6 +996,24 @@ func TestBindRawQueryParameter(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, dest)
 			assert.Equal(t, "red", *dest)
+		})
+
+		// Regression test: primitive string with explode=false should not be
+		// split on commas. Per the OpenAPI specification, explode has no effect
+		// on primitive types.
+		t.Run("string with commas required", func(t *testing.T) {
+			var dest string
+			err := BindRawQueryParameter("form", false, true, "scope", "scope=openid%2Cprofile%2Cemail", &dest)
+			require.NoError(t, err)
+			assert.Equal(t, "openid,profile,email", dest)
+		})
+
+		t.Run("string with commas optional", func(t *testing.T) {
+			var dest *string
+			err := BindRawQueryParameter("form", false, false, "scope", "scope=openid%2Cprofile%2Cemail", &dest)
+			require.NoError(t, err)
+			require.NotNil(t, dest)
+			assert.Equal(t, "openid,profile,email", *dest)
 		})
 
 		t.Run("duplicate param errors", func(t *testing.T) {
