@@ -1045,19 +1045,8 @@ func TestBindRawQueryParameter(t *testing.T) {
 			assert.Contains(t, err.Error(), "exploded")
 		})
 
-		t.Run("spaceDelimited", func(t *testing.T) {
-			var dest []string
-			err := BindRawQueryParameter("spaceDelimited", false, true, "color", "color=a%20b%20c", &dest)
-			assert.Error(t, err)
-			assert.Contains(t, err.Error(), "spaceDelimited")
-		})
-
-		t.Run("pipeDelimited", func(t *testing.T) {
-			var dest []string
-			err := BindRawQueryParameter("pipeDelimited", false, true, "color", "color=a|b|c", &dest)
-			assert.Error(t, err)
-			assert.Contains(t, err.Error(), "pipeDelimited")
-		})
+		// Note: spaceDelimited and pipeDelimited are now supported
+		// and have their own test functions below.
 
 		t.Run("unknown style", func(t *testing.T) {
 			var dest string
@@ -1334,4 +1323,241 @@ func TestBindStyledParameter_HeaderWithCommas(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, []string{"a", "b", "c"}, dest)
 	})
+}
+
+func TestBindQueryParameter_SpaceDelimited(t *testing.T) {
+	t.Run("unexploded int array", func(t *testing.T) {
+		var dest []int
+		q := make(url.Values)
+		q.Set("ids", "3 4 5")
+		err := BindQueryParameterWithOptions("spaceDelimited", false, true, "ids", q, &dest, BindQueryParameterOptions{})
+		require.NoError(t, err)
+		assert.Equal(t, []int{3, 4, 5}, dest)
+	})
+
+	t.Run("unexploded string array", func(t *testing.T) {
+		var dest []string
+		q := make(url.Values)
+		q.Set("color", "red green blue")
+		err := BindQueryParameterWithOptions("spaceDelimited", false, true, "color", q, &dest, BindQueryParameterOptions{})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"red", "green", "blue"}, dest)
+	})
+
+	t.Run("exploded int array", func(t *testing.T) {
+		var dest []int
+		q := make(url.Values)
+		q["ids"] = []string{"3", "4", "5"}
+		err := BindQueryParameterWithOptions("spaceDelimited", true, true, "ids", q, &dest, BindQueryParameterOptions{})
+		require.NoError(t, err)
+		assert.Equal(t, []int{3, 4, 5}, dest)
+	})
+
+	t.Run("optional missing", func(t *testing.T) {
+		var dest *[]int
+		q := make(url.Values)
+		err := BindQueryParameterWithOptions("spaceDelimited", false, false, "ids", q, &dest, BindQueryParameterOptions{})
+		require.NoError(t, err)
+		assert.Nil(t, dest)
+	})
+
+	t.Run("required missing", func(t *testing.T) {
+		var dest []int
+		q := make(url.Values)
+		err := BindQueryParameterWithOptions("spaceDelimited", false, true, "ids", q, &dest, BindQueryParameterOptions{})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "required")
+	})
+}
+
+func TestBindQueryParameter_PipeDelimited(t *testing.T) {
+	t.Run("unexploded int array", func(t *testing.T) {
+		var dest []int
+		q := make(url.Values)
+		q.Set("ids", "3|4|5")
+		err := BindQueryParameterWithOptions("pipeDelimited", false, true, "ids", q, &dest, BindQueryParameterOptions{})
+		require.NoError(t, err)
+		assert.Equal(t, []int{3, 4, 5}, dest)
+	})
+
+	t.Run("unexploded string array", func(t *testing.T) {
+		var dest []string
+		q := make(url.Values)
+		q.Set("color", "red|green|blue")
+		err := BindQueryParameterWithOptions("pipeDelimited", false, true, "color", q, &dest, BindQueryParameterOptions{})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"red", "green", "blue"}, dest)
+	})
+
+	t.Run("exploded int array", func(t *testing.T) {
+		var dest []int
+		q := make(url.Values)
+		q["ids"] = []string{"3", "4", "5"}
+		err := BindQueryParameterWithOptions("pipeDelimited", true, true, "ids", q, &dest, BindQueryParameterOptions{})
+		require.NoError(t, err)
+		assert.Equal(t, []int{3, 4, 5}, dest)
+	})
+
+	t.Run("optional missing", func(t *testing.T) {
+		var dest *[]int
+		q := make(url.Values)
+		err := BindQueryParameterWithOptions("pipeDelimited", false, false, "ids", q, &dest, BindQueryParameterOptions{})
+		require.NoError(t, err)
+		assert.Nil(t, dest)
+	})
+
+	t.Run("required missing", func(t *testing.T) {
+		var dest []int
+		q := make(url.Values)
+		err := BindQueryParameterWithOptions("pipeDelimited", false, true, "ids", q, &dest, BindQueryParameterOptions{})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "required")
+	})
+}
+
+func TestBindRawQueryParameter_SpaceDelimited(t *testing.T) {
+	t.Run("unexploded with %20", func(t *testing.T) {
+		var dest []int
+		err := BindRawQueryParameter("spaceDelimited", false, true, "ids", "ids=3%204%205", &dest)
+		require.NoError(t, err)
+		assert.Equal(t, []int{3, 4, 5}, dest)
+	})
+
+	t.Run("unexploded with +", func(t *testing.T) {
+		var dest []int
+		err := BindRawQueryParameter("spaceDelimited", false, true, "ids", "ids=3+4+5", &dest)
+		require.NoError(t, err)
+		assert.Equal(t, []int{3, 4, 5}, dest)
+	})
+
+	t.Run("unexploded strings", func(t *testing.T) {
+		var dest []string
+		err := BindRawQueryParameter("spaceDelimited", false, true, "color", "color=red%20green%20blue", &dest)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"red", "green", "blue"}, dest)
+	})
+
+	t.Run("exploded", func(t *testing.T) {
+		var dest []int
+		err := BindRawQueryParameter("spaceDelimited", true, true, "ids", "ids=3&ids=4&ids=5", &dest)
+		require.NoError(t, err)
+		assert.Equal(t, []int{3, 4, 5}, dest)
+	})
+
+	t.Run("optional missing", func(t *testing.T) {
+		var dest *[]int
+		err := BindRawQueryParameter("spaceDelimited", false, false, "ids", "other=val", &dest)
+		require.NoError(t, err)
+		assert.Nil(t, dest)
+	})
+}
+
+func TestBindRawQueryParameter_PipeDelimited(t *testing.T) {
+	t.Run("unexploded", func(t *testing.T) {
+		var dest []int
+		err := BindRawQueryParameter("pipeDelimited", false, true, "ids", "ids=3|4|5", &dest)
+		require.NoError(t, err)
+		assert.Equal(t, []int{3, 4, 5}, dest)
+	})
+
+	t.Run("unexploded strings", func(t *testing.T) {
+		var dest []string
+		err := BindRawQueryParameter("pipeDelimited", false, true, "color", "color=red|green|blue", &dest)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"red", "green", "blue"}, dest)
+	})
+
+	t.Run("exploded", func(t *testing.T) {
+		var dest []int
+		err := BindRawQueryParameter("pipeDelimited", true, true, "ids", "ids=3&ids=4&ids=5", &dest)
+		require.NoError(t, err)
+		assert.Equal(t, []int{3, 4, 5}, dest)
+	})
+
+	t.Run("optional missing", func(t *testing.T) {
+		var dest *[]int
+		err := BindRawQueryParameter("pipeDelimited", false, false, "ids", "other=val", &dest)
+		require.NoError(t, err)
+		assert.Nil(t, dest)
+	})
+}
+
+func TestRoundTripQueryParameter_Delimited(t *testing.T) {
+	tests := []struct {
+		name      string
+		style     string
+		explode   bool
+		paramName string
+		value     interface{}
+		dest      interface{}
+		expected  interface{}
+	}{
+		{
+			name:      "spaceDelimited/false int slice",
+			style:     "spaceDelimited",
+			explode:   false,
+			paramName: "ids",
+			value:     []int{1, 2, 3},
+			dest:      &[]int{},
+			expected:  []int{1, 2, 3},
+		},
+		{
+			name:      "spaceDelimited/false string slice",
+			style:     "spaceDelimited",
+			explode:   false,
+			paramName: "color",
+			value:     []string{"red", "green", "blue"},
+			dest:      &[]string{},
+			expected:  []string{"red", "green", "blue"},
+		},
+		{
+			name:      "spaceDelimited/true int slice",
+			style:     "spaceDelimited",
+			explode:   true,
+			paramName: "ids",
+			value:     []int{1, 2, 3},
+			dest:      &[]int{},
+			expected:  []int{1, 2, 3},
+		},
+		{
+			name:      "pipeDelimited/false int slice",
+			style:     "pipeDelimited",
+			explode:   false,
+			paramName: "ids",
+			value:     []int{1, 2, 3},
+			dest:      &[]int{},
+			expected:  []int{1, 2, 3},
+		},
+		{
+			name:      "pipeDelimited/false string slice",
+			style:     "pipeDelimited",
+			explode:   false,
+			paramName: "color",
+			value:     []string{"red", "green", "blue"},
+			dest:      &[]string{},
+			expected:  []string{"red", "green", "blue"},
+		},
+		{
+			name:      "pipeDelimited/true int slice",
+			style:     "pipeDelimited",
+			explode:   true,
+			paramName: "ids",
+			value:     []int{1, 2, 3},
+			dest:      &[]int{},
+			expected:  []int{1, 2, 3},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw, err := StyleParamWithLocation(tt.style, tt.explode, tt.paramName, ParamLocationQuery, tt.value)
+			require.NoError(t, err, "StyleParamWithLocation failed")
+
+			err = BindRawQueryParameter(tt.style, tt.explode, true, tt.paramName, raw, tt.dest)
+			require.NoError(t, err, "BindRawQueryParameter failed for raw=%q", raw)
+
+			actual := reflect.ValueOf(tt.dest).Elem().Interface()
+			assert.Equal(t, tt.expected, actual)
+		})
+	}
 }
