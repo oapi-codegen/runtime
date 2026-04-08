@@ -525,6 +525,24 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 			if len(values) != 1 {
 				return fmt.Errorf("parameter '%s' is not exploded, but is specified multiple times", paramName)
 			}
+
+			// For primitive types, the raw value should be used as-is
+			// without splitting on commas. Per the OpenAPI specification,
+			// explode has no effect on primitive types — the serialization
+			// is the same regardless of the explode value. Comma splitting
+			// is only meaningful for array and object types.
+			// See: https://swagger.io/docs/specification/serialization/
+			if k != reflect.Slice && k != reflect.Struct && k != reflect.Map {
+				err := BindStringToObject(values[0], output)
+				if err != nil {
+					return err
+				}
+				if extraIndirect {
+					dv.Set(reflect.ValueOf(output))
+				}
+				return nil
+			}
+
 			switch style {
 			case "spaceDelimited":
 				parts = strings.Split(values[0], " ")
@@ -568,18 +586,6 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 			default:
 				err = bindSplitPartsToDestinationStruct(paramName, parts, explode, output)
 			}
-		default:
-			if len(parts) == 0 {
-				if required {
-					return &RequiredParameterError{ParamName: paramName}
-				} else {
-					return nil
-				}
-			}
-			if len(parts) != 1 {
-				return fmt.Errorf("multiple values for single value parameter '%s'", paramName)
-			}
-			err = BindStringToObject(parts[0], output)
 		}
 		if err != nil {
 			return err
@@ -745,6 +751,25 @@ func BindRawQueryParameter(style string, explode bool, required bool, paramName 
 			return fmt.Errorf("parameter '%s' is not exploded, but is specified multiple times", paramName)
 		}
 
+		// For primitive types, decode the raw value as-is without splitting
+		// on commas. Per the OpenAPI specification, explode has no effect on
+		// primitive types. Comma splitting is only meaningful for array and
+		// object types.
+		if k != reflect.Slice && k != reflect.Struct && k != reflect.Map {
+			decoded, err := url.QueryUnescape(rawValues[0])
+			if err != nil {
+				return fmt.Errorf("error decoding query parameter '%s' value %q: %w", paramName, rawValues[0], err)
+			}
+			err = BindStringToObject(decoded, output)
+			if err != nil {
+				return err
+			}
+			if extraIndirect {
+				dv.Set(reflect.ValueOf(output))
+			}
+			return nil
+		}
+
 		var rawParts []string
 		switch style {
 		case "spaceDelimited":
@@ -773,17 +798,6 @@ func BindRawQueryParameter(style string, explode bool, required bool, paramName 
 			err = bindSplitPartsToDestinationArray(parts, output)
 		case reflect.Struct:
 			err = bindSplitPartsToDestinationStruct(paramName, parts, explode, output)
-		default:
-			if len(parts) == 0 {
-				if required {
-					return &RequiredParameterError{ParamName: paramName}
-				}
-				return nil
-			}
-			if len(parts) != 1 {
-				return fmt.Errorf("multiple values for single value parameter '%s'", paramName)
-			}
-			err = BindStringToObject(parts[0], output)
 		}
 		if err != nil {
 			return err
