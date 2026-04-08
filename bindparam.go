@@ -586,21 +586,6 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 			default:
 				err = bindSplitPartsToDestinationStruct(paramName, parts, explode, output)
 			}
-		default:
-			// This case is now unreachable for form style with explode=false,
-			// as primitive types are handled above before comma splitting.
-			// It remains for other styles that may reach here.
-			if len(parts) == 0 {
-				if required {
-					return &RequiredParameterError{ParamName: paramName}
-				} else {
-					return nil
-				}
-			}
-			if len(parts) != 1 {
-				return fmt.Errorf("multiple values for single value parameter '%s'", paramName)
-			}
-			err = BindStringToObject(parts[0], output)
 		}
 		if err != nil {
 			return err
@@ -813,19 +798,6 @@ func BindRawQueryParameter(style string, explode bool, required bool, paramName 
 			err = bindSplitPartsToDestinationArray(parts, output)
 		case reflect.Struct:
 			err = bindSplitPartsToDestinationStruct(paramName, parts, explode, output)
-		default:
-			// Unreachable for form style with explode=false, as primitive
-			// types are handled above. Remains for other styles.
-			if len(parts) == 0 {
-				if required {
-					return &RequiredParameterError{ParamName: paramName}
-				}
-				return nil
-			}
-			if len(parts) != 1 {
-				return fmt.Errorf("multiple values for single value parameter '%s'", paramName)
-			}
-			err = BindStringToObject(parts[0], output)
 		}
 		if err != nil {
 			return err
