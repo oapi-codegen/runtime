@@ -8,6 +8,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/kataras/iris/v12 v12.2.11
 	github.com/labstack/echo/v4 v4.15.1
+	github.com/oapi-codegen/nullable v1.1.0
 	github.com/stretchr/testify v1.11.1
 )
 
