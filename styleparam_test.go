@@ -882,14 +882,15 @@ func TestStyleParamNameEncoding(t *testing.T) {
 		assert.EqualValues(t, ";id=5", result)
 	})
 
-	t.Run("deepObject param name not yet encoded", func(t *testing.T) {
-		// NOTE: MarshalDeepObject handles its own serialization and does not
-		// currently encode param names. This documents the current behavior.
+	t.Run("deepObject param name is encoded", func(t *testing.T) {
+		// MarshalDeepObject percent-encodes the param name so non-identifier
+		// names (e.g. those containing reserved URI chars) produce wire-safe
+		// output. See issue #131.
 		type Obj struct {
 			Name string `json:"name"`
 		}
 		result, err := StyleParamWithOptions("deepObject", true, "filter[]", Obj{Name: "foo"}, opts)
 		assert.NoError(t, err)
-		assert.EqualValues(t, "filter[][name]=foo", result)
+		assert.EqualValues(t, "filter%5B%5D[name]=foo", result)
 	})
 }
