@@ -6,8 +6,10 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/oapi-codegen/nullable"
 	"github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBindURLForm(t *testing.T) {
@@ -63,6 +65,84 @@ func TestBindURLForm(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, v, result)
 	}
+}
+
+// TestBindURLFormNullable reproduces oapi-codegen/runtime#129: BindForm fails on
+// a nullable.Nullable[T] field because Nullable's underlying type is map[bool]T
+// and neither bindFormImpl nor BindStringToObjectWithOptions handles maps.
+func TestBindURLFormNullable(t *testing.T) {
+	type testStruct struct {
+		Name nullable.Nullable[string] `json:"name"`
+		Age  nullable.Nullable[int]    `json:"age"`
+	}
+
+	t.Run("string value is bound", func(t *testing.T) {
+		values, err := url.ParseQuery("name=alice")
+		require.NoError(t, err)
+		var result testStruct
+		err = BindForm(&result, values, nil, nil)
+		require.NoError(t, err)
+		got, err := result.Name.Get()
+		require.NoError(t, err)
+		assert.Equal(t, "alice", got)
+	})
+
+	t.Run("int value is bound", func(t *testing.T) {
+		values, err := url.ParseQuery("age=42")
+		require.NoError(t, err)
+		var result testStruct
+		err = BindForm(&result, values, nil, nil)
+		require.NoError(t, err)
+		got, err := result.Age.Get()
+		require.NoError(t, err)
+		assert.Equal(t, 42, got)
+	})
+
+	t.Run("missing field stays unspecified", func(t *testing.T) {
+		var result testStruct
+		err := BindForm(&result, url.Values{}, nil, nil)
+		require.NoError(t, err)
+		assert.False(t, result.Name.IsSpecified())
+		assert.False(t, result.Age.IsSpecified())
+	})
+}
+
+// TestBindURLFormGenericMap covers binding into a non-Nullable map[K]V field
+// using the `name[key]=value` form encoding.
+func TestBindURLFormGenericMap(t *testing.T) {
+	t.Run("string keys, int values", func(t *testing.T) {
+		type testStruct struct {
+			Attrs map[string]int `json:"attrs"`
+		}
+		values, err := url.ParseQuery("attrs[a]=1&attrs[b]=2")
+		require.NoError(t, err)
+		var result testStruct
+		err = BindForm(&result, values, nil, nil)
+		require.NoError(t, err)
+		assert.Equal(t, map[string]int{"a": 1, "b": 2}, result.Attrs)
+	})
+
+	t.Run("int keys, string values", func(t *testing.T) {
+		type testStruct struct {
+			Labels map[int]string `json:"labels"`
+		}
+		values, err := url.ParseQuery("labels[1]=one&labels[2]=two")
+		require.NoError(t, err)
+		var result testStruct
+		err = BindForm(&result, values, nil, nil)
+		require.NoError(t, err)
+		assert.Equal(t, map[int]string{1: "one", 2: "two"}, result.Labels)
+	})
+
+	t.Run("absent map stays nil", func(t *testing.T) {
+		type testStruct struct {
+			Attrs map[string]int `json:"attrs"`
+		}
+		var result testStruct
+		err := BindForm(&result, url.Values{}, nil, nil)
+		require.NoError(t, err)
+		assert.Nil(t, result.Attrs)
+	})
 }
 
 func TestBindMultipartForm(t *testing.T) {
