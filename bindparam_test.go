@@ -544,6 +544,26 @@ func TestBindQueryParameter(t *testing.T) {
 		assert.Nil(t, date)
 	})
 
+	// Regression test for https://github.com/oapi-codegen/runtime/issues/134:
+	// an absent *required* date (a struct-typed param) must report a
+	// RequiredParameterError, not pass silently. The exploded form path
+	// previously returned nil here, dropping the required check.
+	t.Run("date_form_explode_required_missing", func(t *testing.T) {
+		var date types.Date
+		queryParams := url.Values{}
+		err := BindQueryParameter("form", true, true, "date", queryParams, &date)
+		var requiredErr *RequiredParameterError
+		assert.ErrorAs(t, err, &requiredErr)
+	})
+
+	t.Run("date_form_no_explode_required_missing", func(t *testing.T) {
+		var date types.Date
+		queryParams := url.Values{}
+		err := BindQueryParameter("form", false, true, "date", queryParams, &date)
+		var requiredErr *RequiredParameterError
+		assert.ErrorAs(t, err, &requiredErr)
+	})
+
 	t.Run("date_form_no_explode_required", func(t *testing.T) {
 		expectedDate := types.Date{Time: time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)}
 		var date types.Date
