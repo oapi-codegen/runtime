@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestStyleParam(t *testing.T) {
@@ -893,4 +894,23 @@ func TestStyleParamNameEncoding(t *testing.T) {
 		assert.NoError(t, err)
 		assert.EqualValues(t, "filter%5B%5D[name]=foo", result)
 	})
+}
+
+// TestStyleParamNestedStructError covers issue #52: OpenAPI style-based
+// serialization has no defined wire format for nested objects, so styling a
+// struct containing another struct must fail with an error that points at
+// the 'content: application/json' parameter form instead of a bare
+// "unsupported type".
+func TestStyleParamNestedStructError(t *testing.T) {
+	type Header struct {
+		Name string `json:"name"`
+	}
+	type ParentStruct struct {
+		Header Header `json:"header"`
+	}
+
+	_, err := StyleParamWithLocation("form", true, "param_id", ParamLocationQuery, ParentStruct{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot serialize nested object of type runtime.Header")
+	assert.Contains(t, err.Error(), "content: application/json")
 }
