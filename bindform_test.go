@@ -275,3 +275,50 @@ func makeMultipartFilesForm(files []fileData) (*multipart.Form, error) {
 	mr := multipart.NewReader(&buffer, mw.Boundary())
 	return mr.ReadForm(1024)
 }
+
+// TestFormTagPreferredOverJSONTag covers issue #128: form encoding keys on
+// the `form` struct tag when present — for field names, `-` skips and
+// `,omitempty` — falling back to the `json` tag for structs that only carry
+// json tags.
+func TestFormTagPreferredOverJSONTag(t *testing.T) {
+	type testSubStruct struct {
+		Value string `json:"json_value" form:"form_value"`
+	}
+	type testStruct struct {
+		// Divergent names: the form name must win on the wire.
+		Renamed string `json:"json_name" form:"form_name"`
+		// omitempty only on the form tag: zero value is omitted even
+		// though the json tag would keep it.
+		FormOmit string `json:"keep" form:"form_omit,omitempty"`
+		// omitempty only on the json tag: the form tag wins, so the zero
+		// value is NOT omitted.
+		JSONOmit string `json:"json_omit,omitempty" form:"form_keep"`
+		// Skipped for form encoding only.
+		FormSkipped string `json:"json_visible" form:"-"`
+		// No form tag: json tag remains authoritative.
+		Fallback string `json:"fallback_name,omitempty"`
+		// Nested structs resolve their fields the same way.
+		Nested testSubStruct `form:"nested,omitempty"`
+	}
+
+	src := testStruct{
+		Renamed:     "a",
+		FormSkipped: "hidden",
+		Fallback:    "b",
+		Nested:      testSubStruct{Value: "c"},
+	}
+
+	marshaled, err := MarshalForm(src, nil)
+	require.NoError(t, err)
+	encoded, err := url.QueryUnescape(marshaled.Encode())
+	require.NoError(t, err)
+	assert.Equal(t, "fallback_name=b&form_keep=&form_name=a&nested[form_value]=c", encoded)
+
+	// Binding uses the same tag resolution, so the marshaled form
+	// round-trips (minus the form-skipped field).
+	var dst testStruct
+	require.NoError(t, BindForm(&dst, marshaled, nil, nil))
+	want := src
+	want.FormSkipped = ""
+	assert.Equal(t, want, dst)
+}
