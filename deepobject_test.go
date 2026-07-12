@@ -443,3 +443,75 @@ func TestDeepObject_URLEncoding(t *testing.T) {
 			"expected UTF-8 percent-encoded value; got %q", marshaled)
 	})
 }
+
+// TestDeepObject_InterfaceDestination covers binding into
+// map[string]interface{}, the type generated for a deepObject parameter
+// declared with `additionalProperties: true`. There is no type information
+// to bind against, so leaves are typed by JSON-scalar inference and
+// consecutive integer subscripts become []interface{}.
+// See https://github.com/oapi-codegen/runtime/issues/138 and
+// https://github.com/oapi-codegen/oapi-codegen/issues/2177
+func TestDeepObject_InterfaceDestination(t *testing.T) {
+	params, err := url.ParseQuery(strings.Join([]string{
+		"properties[vaccinated]=true",
+		"properties[color]=black",
+		"properties[coat_length]=large",
+		"properties[weight]=12.5",
+		"properties[zip]=00714",
+		"properties[chipped]=null",
+		"properties[owner][name]=alice",
+		"properties[owner][phones][0]=555-0100",
+		"properties[owner][phones][1]=555-0101",
+		"properties[scores][0]=1",
+		"properties[scores][2]=3",
+	}, "&"))
+	require.NoError(t, err)
+
+	want := map[string]interface{}{
+		"vaccinated":  true,
+		"color":       "black",
+		"coat_length": "large",
+		"weight":      12.5,
+		// Not a valid JSON number (leading zero), so it stays a string.
+		"zip":     "00714",
+		"chipped": nil,
+		"owner": map[string]interface{}{
+			"name":   "alice",
+			"phones": []interface{}{"555-0100", "555-0101"},
+		},
+		// Non-consecutive subscripts are not an array; they stay a map.
+		"scores": map[string]interface{}{"0": 1.0, "2": 3.0},
+	}
+
+	var dst map[string]interface{}
+	require.NoError(t, UnmarshalDeepObject(&dst, "properties", params))
+	assert.Equal(t, want, dst)
+
+	// The generated params struct field for an optional parameter is a
+	// pointer; make sure that path allocates and binds too.
+	var pdst *map[string]interface{}
+	require.NoError(t, UnmarshalDeepObject(&pdst, "properties", params))
+	require.NotNil(t, pdst)
+	assert.Equal(t, want, *pdst)
+}
+
+// TestDeepObject_InterfaceRoundTrip verifies that a map[string]interface{}
+// serialized by MarshalDeepObject binds back to an equal value.
+func TestDeepObject_InterfaceRoundTrip(t *testing.T) {
+	src := map[string]interface{}{
+		"vaccinated": true,
+		"color":      "black",
+		"weight":     12.5,
+		"chipped":    nil,
+		"owner": map[string]interface{}{
+			"name":   "alice",
+			"phones": []interface{}{"555-0100", "555-0101"},
+		},
+	}
+
+	marshaled, err := MarshalDeepObject(src, "properties")
+	require.NoError(t, err)
+
+	var dst map[string]interface{}
+	assertDeepObjectWireSafe(t, marshaled, "properties", &dst, src)
+}
