@@ -587,6 +587,31 @@ func TestBindQueryParameter(t *testing.T) {
 		assert.Equal(t, expectedDate, *date)
 	})
 
+	// types.Duration is a scalar binding target like types.Date: it must
+	// bind directly via its Binder implementation rather than being
+	// decomposed as a struct of key-value pairs.
+	// See https://github.com/oapi-codegen/runtime/issues/66
+	t.Run("duration_form_explode_required", func(t *testing.T) {
+		var duration types.Duration
+		queryParams := url.Values{
+			"retry": {"P1DT2H30M"},
+		}
+		err := BindQueryParameter("form", true, true, "retry", queryParams, &duration)
+		assert.NoError(t, err)
+		assert.Equal(t, types.Duration{Days: 1, Hours: 2, Minutes: 30}, duration)
+	})
+
+	t.Run("duration_form_no_explode_optional", func(t *testing.T) {
+		var duration *types.Duration
+		queryParams := url.Values{
+			"retry": {"PT36H"},
+		}
+		err := BindQueryParameter("form", false, false, "retry", queryParams, &duration)
+		assert.NoError(t, err)
+		require.NotNil(t, duration)
+		assert.Equal(t, types.Duration{Hours: 36}, *duration)
+	})
+
 	// Regression test: primitive string with explode=false should not be
 	// split on commas. Per the OpenAPI specification, explode has no effect
 	// on primitive types — the value must be bound as-is.
