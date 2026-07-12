@@ -1623,3 +1623,59 @@ func TestRoundTripQueryParameter_Delimited(t *testing.T) {
 		})
 	}
 }
+
+// TestBindStyledParameterValueIsUnescaped covers issue #35: routers differ
+// in whether they deliver path parameters raw or already decoded, so the
+// generated wrapper declares it via ValueIsUnescaped rather than the binder
+// unconditionally unescaping (which double-decoded values containing
+// literal percent signs). The zero value preserves the historical
+// unescaping for existing callers.
+func TestBindStyledParameterValueIsUnescaped(t *testing.T) {
+	var dst string
+
+	// By default, values are treated as escaped and unescaped by location —
+	// the historical behavior of existing generated code.
+	err := BindStyledParameterWithOptions("simple", "param1", "discount%2520", &dst, BindStyledParameterOptions{
+		ParamLocation: ParamLocationPath,
+		Required:      true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "discount%20", dst)
+
+	err = BindStyledParameterWithOptions("form", "param1", "a+b%2Fc", &dst, BindStyledParameterOptions{
+		ParamLocation: ParamLocationQuery,
+		Required:      true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "a b/c", dst)
+
+	// A router-decoded value binds verbatim when the wrapper says so: a
+	// value that legitimately contains a percent sequence is not decoded
+	// again...
+	err = BindStyledParameterWithOptions("simple", "param1", "discount%20", &dst, BindStyledParameterOptions{
+		ParamLocation:    ParamLocationPath,
+		Required:         true,
+		ValueIsUnescaped: true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "discount%20", dst)
+
+	// ...and a bare percent doesn't fail as an invalid escape.
+	err = BindStyledParameterWithOptions("simple", "param1", "15%off", &dst, BindStyledParameterOptions{
+		ParamLocation:    ParamLocationPath,
+		Required:         true,
+		ValueIsUnescaped: true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "15%off", dst)
+
+	// The deprecated entry points always unescaped; the zero value keeps
+	// that behavior for the old generated code that calls them.
+	err = BindStyledParameterWithLocation("simple", false, "param1", ParamLocationPath, "discount%2520", &dst)
+	require.NoError(t, err)
+	assert.Equal(t, "discount%20", dst)
+
+	err = BindStyledParameter("simple", false, "param1", "a+b", &dst)
+	require.NoError(t, err)
+	assert.Equal(t, "a b", dst)
+}
