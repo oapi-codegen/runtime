@@ -525,10 +525,7 @@ func escapeParameterName(name string, paramLocation ParamLocation) string {
 func escapeParameterString(value string, paramLocation ParamLocation, allowReserved bool) string {
 	switch paramLocation {
 	case ParamLocationQuery:
-		if allowReserved {
-			return escapeQueryAllowReserved(value)
-		}
-		return url.QueryEscape(value)
+		return DefaultQueryEncoder.EscapeQueryValue(value, allowReserved)
 	case ParamLocationPath:
 		return url.PathEscape(value)
 	default:
