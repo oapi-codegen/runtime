@@ -86,7 +86,7 @@ func StyleParamWithOptions(style string, explode bool, paramName string, value i
 
 	// Things may be passed in by pointer, we need to dereference, so return
 	// error on nil.
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return "", fmt.Errorf("value is a nil pointer")
 		}
@@ -304,7 +304,7 @@ func styleStruct(style string, explode bool, paramName string, paramLocation Par
 		f := v.Field(i)
 
 		// Unset optional fields will be nil pointers, skip over those.
-		if f.Type().Kind() == reflect.Ptr && f.IsNil() {
+		if f.Type().Kind() == reflect.Pointer && f.IsNil() {
 			continue
 		}
 		str, err := primitiveToString(f.Interface())
