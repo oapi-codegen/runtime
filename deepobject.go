@@ -350,7 +350,7 @@ func assignPathValues(dst interface{}, pathValues fieldOrValue) error {
 			}
 		}
 		return nil
-	case reflect.Ptr:
+	case reflect.Pointer:
 		// If we have a pointer after redirecting, it means we're dealing with
 		// an optional field, such as *string, which was passed in as &foo. We
 		// will allocate it if necessary, and call ourselves with a different
