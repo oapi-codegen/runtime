@@ -20,7 +20,7 @@ tidy:
 	go mod tidy
 
 tidy-ci:
-	tidied -verbose
+	go mod tidy -diff
 
 else
 
