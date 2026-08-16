@@ -111,8 +111,12 @@ func BindStringToObjectWithOptions(src string, dst interface{}, opts BindStringT
 			v.SetBytes(decoded)
 			return nil
 		}
-		// Non-binary slices fall through to the default error case.
-		fallthrough
+		// Non-binary slices have no string representation to parse, so they
+		// get the same unhandled-type error as the default case below. This
+		// can not be a fallthrough: the next case is the integer one, and a
+		// source string that parses as an integer would reach v.OverflowInt
+		// on a slice value, which panics.
+		err = fmt.Errorf("can not bind to destination of type: %s", t.Kind())
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		var val int64
 		val, err = strconv.ParseInt(src, 10, 64)

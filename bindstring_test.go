@@ -17,9 +17,11 @@ import (
 	"encoding/base64"
 	"fmt"
 	"math"
+	"net/url"
 	"testing"
 	"time"
 
+	"github.com/oapi-codegen/nullable"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -273,4 +275,77 @@ func TestBindStringToObject_ByteSlice(t *testing.T) {
 		err := BindStringToObjectWithOptions("!!!not-base64!!!", &dest, opts)
 		assert.Error(t, err)
 	})
+}
+
+// A slice destination that isn't a base64-decoded []byte has no string
+// representation to parse, so it must report an unhandled-type error. It used
+// to fall through into the integer case instead, which meant any source that
+// parsed as an integer reached v.OverflowInt on a slice value and panicked,
+// while a non-numeric source happened to error out in ParseInt first.
+// See: https://github.com/oapi-codegen/runtime/issues/155
+func TestBindStringToObject_NonByteSliceDestination(t *testing.T) {
+	const wantErr = "can not bind to destination of type: slice"
+
+	t.Run("numeric source", func(t *testing.T) {
+		var dest []string
+		require.NotPanics(t, func() {
+			err := BindStringToObject("123", &dest)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), wantErr)
+		})
+		assert.Nil(t, dest)
+	})
+
+	t.Run("non-numeric source", func(t *testing.T) {
+		var dest []string
+		err := BindStringToObject("abc", &dest)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), wantErr)
+	})
+
+	t.Run("integer element type", func(t *testing.T) {
+		var dest []int
+		require.NotPanics(t, func() {
+			err := BindStringToObject("123", &dest)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), wantErr)
+		})
+	})
+
+	t.Run("byte slice without byte format", func(t *testing.T) {
+		// The base64 path is only taken for Format "byte"; without it a
+		// []byte is just another slice.
+		var dest []byte
+		require.NotPanics(t, func() {
+			err := BindStringToObject("123", &dest)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), wantErr)
+		})
+	})
+}
+
+// The panic above was reachable from generated server code: a nullable slice
+// query parameter with the default form/explode serialization binds through
+// the primitive path, and the nullable wrapper then binds the raw value into a
+// fresh slice. `?p=123` panicked while `?p=abc` returned a binding error; both
+// must now be errors.
+// See: https://github.com/oapi-codegen/runtime/issues/155
+func TestBindQueryParameter_NullableSliceDestination(t *testing.T) {
+	for _, src := range []string{"123", "abc"} {
+		t.Run(src, func(t *testing.T) {
+			require.NotPanics(t, func() {
+				var dest nullable.Nullable[[]string]
+				err := BindQueryParameter("form", true, true, "p", url.Values{"p": {src}}, &dest)
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "can not bind to destination of type: slice")
+			})
+
+			require.NotPanics(t, func() {
+				var dest nullable.Nullable[[]string]
+				err := BindRawQueryParameter("form", true, true, "p", "p="+src, &dest)
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "can not bind to destination of type: slice")
+			})
+		})
+	}
 }
