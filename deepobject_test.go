@@ -495,6 +495,52 @@ func TestDeepObject_InterfaceDestination(t *testing.T) {
 	assert.Equal(t, want, *pdst)
 }
 
+// TestMarshalDeepObject_NilAndEmpty verifies that nil and empty nilable types
+// (maps and slices, both directly and via pointer) produce the empty string
+// from MarshalDeepObject. An absent/empty parameter must not add any
+// query-string contribution.
+func TestMarshalDeepObject_NilAndEmpty(t *testing.T) {
+	type testCase struct {
+		name  string
+		input interface{}
+	}
+	cases := []testCase{
+		// interface-typed nil / empty — handled by the pre-check in MarshalDeepObject
+		{"nil map[string]interface{}", (map[string]interface{})(nil)},
+		{"empty map[string]interface{}", map[string]interface{}{}},
+		{"nil []interface{}", ([]interface{})(nil)},
+		{"empty []interface{}", []interface{}{}},
+		// concrete-typed nil / empty maps
+		{"nil map[string]string", (map[string]string)(nil)},
+		{"empty map[string]string", map[string]string{}},
+		{"nil map[string]int", (map[string]int)(nil)},
+		{"empty map[string]int", map[string]int{}},
+		// concrete-typed nil / empty slices
+		{"nil []string", ([]string)(nil)},
+		{"empty []string", []string{}},
+		{"nil []int", ([]int)(nil)},
+		{"empty []int", []int{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := MarshalDeepObject(tc.input, "p")
+			require.NoError(t, err)
+			assert.Equal(t, "", got, "expected empty string for nil/empty nilable type")
+		})
+	}
+	for _, tc := range []testCase{
+		// nil pointers to maps and slices
+		{"nil *map[string]string", (*map[string]string)(nil)},
+		{"nil *[]string", (*[]string)(nil)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := MarshalDeepObject(tc.input, "p")
+			require.NoError(t, err)
+			assert.Equal(t, "p[]=null", got, "nil pointers are still serialized as null")
+		})
+	}
+}
+
 // TestDeepObject_InterfaceRoundTrip verifies that a map[string]interface{}
 // serialized by MarshalDeepObject binds back to an equal value.
 func TestDeepObject_InterfaceRoundTrip(t *testing.T) {
