@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"testing"
 	"time"
@@ -51,6 +52,46 @@ func TestDate_Stringer(t *testing.T) {
 		}
 		assert.Equal(t, "2019-04-01", fmt.Sprintf("%v", d))
 	})
+}
+
+func TestDate_MarshalText(t *testing.T) {
+	date := Date{Time: time.Date(2022, 6, 14, 0, 0, 0, 0, time.UTC)}
+
+	value, err := date.MarshalText()
+
+	assert.NoError(t, err)
+	assert.Equal(t, "2022-06-14", string(value))
+}
+
+func TestDate_TextRoundTrip(t *testing.T) {
+	testDate := time.Date(2022, 6, 14, 0, 0, 0, 0, time.UTC)
+
+	value, err := Date{Time: testDate}.MarshalText()
+	assert.NoError(t, err)
+
+	date := Date{}
+	err = date.UnmarshalText(value)
+
+	assert.NoError(t, err)
+	assert.Equal(t, testDate, date.Time)
+}
+
+func TestDate_XMLRoundTrip(t *testing.T) {
+	testDate := time.Date(2019, 4, 1, 0, 0, 0, 0, time.UTC)
+	type body struct {
+		XMLName   xml.Name `xml:"body"`
+		DateField Date     `xml:"date"`
+	}
+
+	xmlBytes, err := xml.Marshal(body{DateField: Date{testDate}})
+	assert.NoError(t, err)
+	assert.Equal(t, `<body><date>2019-04-01</date></body>`, string(xmlBytes))
+
+	var b body
+	err = xml.Unmarshal(xmlBytes, &b)
+
+	assert.NoError(t, err)
+	assert.Equal(t, testDate, b.DateField.Time)
 }
 
 func TestDate_UnmarshalText(t *testing.T) {
