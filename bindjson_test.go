@@ -92,7 +92,7 @@ type bindJSONAll struct {
 	Ignored    string `json:"-"`
 	unexported string
 	NoTag      string
-	Dash       string `json:"-,"`
+	Dash       string `json:"-,"` //nolint:staticcheck // SA5008: "-," deliberately names the member "-"; the binder must match encoding/json here
 }
 
 func TestBindJSONValue_MatchesEncodingJSON(t *testing.T) {
@@ -135,6 +135,7 @@ func TestBindJSONValue_MatchesEncodingJSON(t *testing.T) {
 				assert.JSONEq(t, string(want.Raw), string(got.Raw))
 				want.Raw, got.Raw = nil, nil
 			}
+			assert.Empty(t, got.unexported, "unexported fields must never be set")
 			assert.Equal(t, want, got)
 		})
 	}
