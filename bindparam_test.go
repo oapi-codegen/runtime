@@ -1704,3 +1704,205 @@ func TestBindStyledParameterValueIsUnescaped(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "a b", dst)
 }
+
+// TestBindStyledParameterWithOptions_PathStyles pins the behavior of the
+// label and matrix styles through the public entry point for every kind of
+// destination the binder dispatches on (primitive, slice, struct, map), in
+// both exploded and non-exploded form, plus the malformed inputs each style
+// rejects. It exists so that a change to the primitive branch of
+// BindStyledParameterWithOptions cannot silently alter any of the others.
+func TestBindStyledParameterWithOptions_PathStyles(t *testing.T) {
+	type Object struct {
+		Role      string `json:"role"`
+		FirstName string `json:"firstName"`
+	}
+
+	tests := []struct {
+		name    string
+		style   string
+		explode bool
+		value   string
+		dest    interface{} // pointer to zero value of the destination type
+		want    interface{} // expected value after binding; ignored if wantErr
+		wantErr string      // substring of the expected error, empty for success
+	}{
+		// label, non-exploded
+		{"label/int", "label", false, ".5", new(int32), int32(5), ""},
+		{"label/string", "label", false, ".blue", new(string), "blue", ""},
+		{"label/string slice", "label", false, ".blue,black,brown", new([]string), []string{"blue", "black", "brown"}, ""},
+		{"label/int slice", "label", false, ".3,4,5", new([]int), []int{3, 4, 5}, ""},
+		{"label/single element slice", "label", false, ".blue", new([]string), []string{"blue"}, ""},
+		{"label/struct", "label", false, ".role,admin,firstName,Alex", new(Object), Object{Role: "admin", FirstName: "Alex"}, ""},
+		{"label/map", "label", false, ".role,admin,firstName,Alex", new(map[string]string), map[string]string{"role": "admin", "firstName": "Alex"}, ""},
+		{"label/missing prefix int", "label", false, "5", new(int32), nil, "should start with '.'"},
+		{"label/missing prefix slice", "label", false, "3,4,5", new([]int), nil, "should start with '.'"},
+		{"label/missing prefix struct", "label", false, "role,admin", new(Object), nil, "should start with '.'"},
+		{"label/not a number", "label", false, ".abc", new(int32), nil, "error binding"},
+
+		// label, exploded
+		{"label/explode/int", "label", true, ".5", new(int32), int32(5), ""},
+		{"label/explode/string", "label", true, ".blue", new(string), "blue", ""},
+		{"label/explode/string slice", "label", true, ".blue.black.brown", new([]string), []string{"blue", "black", "brown"}, ""},
+		{"label/explode/int slice", "label", true, ".3.4.5", new([]int), []int{3, 4, 5}, ""},
+		{"label/explode/single element slice", "label", true, ".blue", new([]string), []string{"blue"}, ""},
+		{"label/explode/struct", "label", true, ".role=admin.firstName=Alex", new(Object), Object{Role: "admin", FirstName: "Alex"}, ""},
+		{"label/explode/map", "label", true, ".role=admin.firstName=Alex", new(map[string]string), map[string]string{"role": "admin", "firstName": "Alex"}, ""},
+		{"label/explode/missing prefix int", "label", true, "5", new(int32), nil, "should start with '.'"},
+		{"label/explode/missing prefix slice", "label", true, "3.4.5", new([]int), nil, "should start with '.'"},
+		{"label/explode/missing prefix struct", "label", true, "role=admin", new(Object), nil, "should start with '.'"},
+
+		// matrix, non-exploded
+		{"matrix/int", "matrix", false, ";param=5", new(int32), int32(5), ""},
+		{"matrix/string", "matrix", false, ";param=blue", new(string), "blue", ""},
+		{"matrix/string slice", "matrix", false, ";param=blue,black,brown", new([]string), []string{"blue", "black", "brown"}, ""},
+		{"matrix/int slice", "matrix", false, ";param=3,4,5", new([]int), []int{3, 4, 5}, ""},
+		{"matrix/single element slice", "matrix", false, ";param=blue", new([]string), []string{"blue"}, ""},
+		{"matrix/struct", "matrix", false, ";param=role,admin,firstName,Alex", new(Object), Object{Role: "admin", FirstName: "Alex"}, ""},
+		{"matrix/map", "matrix", false, ";param=role,admin,firstName,Alex", new(map[string]string), map[string]string{"role": "admin", "firstName": "Alex"}, ""},
+		{"matrix/missing prefix int", "matrix", false, "5", new(int32), nil, "to start with ;param="},
+		{"matrix/missing name int", "matrix", false, ";5", new(int32), nil, "to start with ;param="},
+		{"matrix/wrong name int", "matrix", false, ";other=5", new(int32), nil, "to start with ;param="},
+		{"matrix/missing prefix slice", "matrix", false, "3,4,5", new([]int), nil, "to start with ;param="},
+		{"matrix/missing prefix struct", "matrix", false, "role,admin", new(Object), nil, "to start with ;param="},
+
+		// matrix, exploded
+		{"matrix/explode/int", "matrix", true, ";param=5", new(int32), int32(5), ""},
+		{"matrix/explode/string", "matrix", true, ";param=blue", new(string), "blue", ""},
+		{"matrix/explode/string slice", "matrix", true, ";param=blue;param=black;param=brown", new([]string), []string{"blue", "black", "brown"}, ""},
+		{"matrix/explode/int slice", "matrix", true, ";param=3;param=4;param=5", new([]int), []int{3, 4, 5}, ""},
+		{"matrix/explode/single element slice", "matrix", true, ";param=blue", new([]string), []string{"blue"}, ""},
+		{"matrix/explode/struct", "matrix", true, ";role=admin;firstName=Alex", new(Object), Object{Role: "admin", FirstName: "Alex"}, ""},
+		{"matrix/explode/map", "matrix", true, ";role=admin;firstName=Alex", new(map[string]string), map[string]string{"role": "admin", "firstName": "Alex"}, ""},
+		{"matrix/explode/missing prefix int", "matrix", true, "param=5", new(int32), nil, "should start with ';'"},
+		{"matrix/explode/missing prefix slice", "matrix", true, "param=3;param=4", new([]int), nil, "should start with ';'"},
+		{"matrix/explode/missing prefix struct", "matrix", true, "role=admin", new(Object), nil, "should start with ';'"},
+		// The exploded matrix splitter has always tolerated a missing
+		// "name=" on individual values. Pinned so the fix does not tighten it.
+		{"matrix/explode/missing name int (lenient)", "matrix", true, ";5", new(int32), int32(5), ""},
+		{"matrix/explode/missing name slice (lenient)", "matrix", true, ";3;param=4;5", new([]int), []int{3, 4, 5}, ""},
+
+		// Required parameters reject an empty value before any style handling.
+		{"label/required empty", "label", false, "", new(string), nil, "is empty"},
+		{"matrix/required empty", "matrix", false, "", new(string), nil, "is empty"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := BindStyledParameterWithOptions(tt.style, "param", tt.value, tt.dest, BindStyledParameterOptions{
+				ParamLocation: ParamLocationPath,
+				Explode:       tt.explode,
+				Required:      true,
+			})
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			actual := reflect.ValueOf(tt.dest).Elem().Interface()
+			assert.Equal(t, tt.want, actual)
+		})
+	}
+}
+
+// TestRoundTripPathParameter serializes a value as a path parameter with
+// StyleParamWithOptions, decodes the segment the way a router does before
+// handing it to generated code, and binds it back with ValueIsUnescaped set.
+// Every value the client can emit must bind back to itself.
+//
+// The delimiter-bearing scalar cases reproduce
+// https://github.com/oapi-codegen/runtime/issues/175: a scalar's value is
+// data, so a comma, period or semicolon inside it must survive the trip.
+func TestRoundTripPathParameter(t *testing.T) {
+	type Object struct {
+		FirstName string `json:"firstName"`
+		Role      string `json:"role"`
+	}
+
+	tests := []struct {
+		name    string
+		style   string
+		explode bool
+		value   interface{}
+		dest    interface{} // pointer to zero value of the destination type
+	}{
+		// simple
+		{"simple/false string", "simple", false, "blue", new(string)},
+		{"simple/true string", "simple", true, "blue", new(string)},
+		{"simple/false int", "simple", false, 42, new(int)},
+		{"simple/false string slice", "simple", false, []string{"blue", "black", "brown"}, new([]string)},
+		{"simple/true string slice", "simple", true, []string{"blue", "black", "brown"}, new([]string)},
+		{"simple/false int slice", "simple", false, []int{3, 4, 5}, new([]int)},
+		{"simple/false struct", "simple", false, Object{FirstName: "Alex", Role: "admin"}, new(Object)},
+		{"simple/true struct", "simple", true, Object{FirstName: "Alex", Role: "admin"}, new(Object)},
+		{"simple/false string with comma", "simple", false, "big,red", new(string)},
+		{"simple/false string with slash", "simple", false, "a/b", new(string)},
+		{"simple/false string with space", "simple", false, "big red", new(string)},
+
+		// label
+		{"label/false string", "label", false, "blue", new(string)},
+		{"label/true string", "label", true, "blue", new(string)},
+		{"label/false int", "label", false, 42, new(int)},
+		{"label/true int", "label", true, 42, new(int)},
+		{"label/false string slice", "label", false, []string{"blue", "black", "brown"}, new([]string)},
+		{"label/true string slice", "label", true, []string{"blue", "black", "brown"}, new([]string)},
+		{"label/false int slice", "label", false, []int{3, 4, 5}, new([]int)},
+		{"label/true int slice", "label", true, []int{3, 4, 5}, new([]int)},
+		{"label/false struct", "label", false, Object{FirstName: "Alex", Role: "admin"}, new(Object)},
+		{"label/true struct", "label", true, Object{FirstName: "Alex", Role: "admin"}, new(Object)},
+		{"label/false string with slash", "label", false, "a/b", new(string)},
+		{"label/false string with space", "label", false, "big red", new(string)},
+		// issue #175
+		{"label/false string with comma", "label", false, "big,red", new(string)},
+		{"label/true string with period", "label", true, "big.red", new(string)},
+		{"label/false string with period", "label", false, "big.red", new(string)},
+		{"label/true string with comma", "label", true, "big,red", new(string)},
+		{"label/true string with semicolon", "label", true, "big;red", new(string)},
+
+		// matrix
+		{"matrix/false string", "matrix", false, "blue", new(string)},
+		{"matrix/true string", "matrix", true, "blue", new(string)},
+		{"matrix/false int", "matrix", false, 42, new(int)},
+		{"matrix/true int", "matrix", true, 42, new(int)},
+		{"matrix/false string slice", "matrix", false, []string{"blue", "black", "brown"}, new([]string)},
+		{"matrix/true string slice", "matrix", true, []string{"blue", "black", "brown"}, new([]string)},
+		{"matrix/false int slice", "matrix", false, []int{3, 4, 5}, new([]int)},
+		{"matrix/true int slice", "matrix", true, []int{3, 4, 5}, new([]int)},
+		{"matrix/false struct", "matrix", false, Object{FirstName: "Alex", Role: "admin"}, new(Object)},
+		{"matrix/true struct", "matrix", true, Object{FirstName: "Alex", Role: "admin"}, new(Object)},
+		{"matrix/false string with slash", "matrix", false, "a/b", new(string)},
+		{"matrix/false string with space", "matrix", false, "big red", new(string)},
+		// issue #175
+		{"matrix/false string with comma", "matrix", false, "big,red", new(string)},
+		{"matrix/true string with semicolon", "matrix", true, "big;red", new(string)},
+		{"matrix/false string with semicolon", "matrix", false, "big;red", new(string)},
+		{"matrix/true string with comma", "matrix", true, "big,red", new(string)},
+		{"matrix/true string with equals", "matrix", true, "a=b", new(string)},
+		{"matrix/true string with own prefix", "matrix", true, "color=red", new(string)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			encoded, err := StyleParamWithOptions(tt.style, tt.explode, "color", tt.value, StyleParamOptions{
+				ParamLocation: ParamLocationPath,
+			})
+			require.NoError(t, err, "StyleParamWithOptions failed")
+
+			// A router such as net/http.ServeMux decodes the path segment
+			// before generated code sees it.
+			decoded, err := url.PathUnescape(encoded)
+			require.NoError(t, err, "PathUnescape failed for %q", encoded)
+
+			err = BindStyledParameterWithOptions(tt.style, "color", decoded, tt.dest, BindStyledParameterOptions{
+				ParamLocation:    ParamLocationPath,
+				Explode:          tt.explode,
+				Required:         true,
+				ValueIsUnescaped: true,
+			})
+			require.NoError(t, err, "BindStyledParameterWithOptions failed for encoded=%q decoded=%q", encoded, decoded)
+
+			actual := reflect.ValueOf(tt.dest).Elem().Interface()
+			assert.Equal(t, tt.value, actual, "round trip changed the value (encoded=%q decoded=%q)", encoded, decoded)
+		})
+	}
+}
