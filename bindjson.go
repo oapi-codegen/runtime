@@ -1,11 +1,13 @@
 package runtime
 
 import (
+	"bytes"
 	"encoding"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -31,8 +33,12 @@ type validatedBody interface {
 // case-insensitively, and the body is not decoded a second time.
 //
 // Without a validated value, or when the value cannot be bound into v, the
-// body is decoded with encoding/json exactly as before, so error behaviour
-// (including io.EOF for an empty body) is unchanged.
+// body is decoded with the current JSONCodec (see SetJSONCodec), as a stream
+// when it implements StreamingJSONCodec. With the default codec that is
+// encoding/json's Decoder, so its error behaviour is unchanged. A body that is
+// empty, or only white space, is io.EOF whichever codec is in use, as the
+// Decoder reports it: generated handlers take that as an optional body left
+// out.
 func BindJSONBody(r *http.Request, v any) error {
 	if r != nil && r.Body != nil {
 		if b, ok := r.Body.(validatedBody); ok {
@@ -41,7 +47,34 @@ func BindJSONBody(r *http.Request, v any) error {
 			}
 		}
 	}
-	return json.NewDecoder(r.Body).Decode(v)
+	body, err := nonEmptyBody(r.Body)
+	if err != nil {
+		return err
+	}
+	return JSONUnmarshalRead(body, v)
+}
+
+// nonEmptyBody returns r positioned at its first byte that isn't JSON white
+// space, or io.EOF when it has none, so that an empty body is io.EOF whichever
+// codec decodes it.
+func nonEmptyBody(r io.Reader) (io.Reader, error) {
+	if r == nil {
+		return nil, io.EOF
+	}
+	var b [1]byte
+	for {
+		n, err := r.Read(b[:])
+		if n == 1 {
+			switch b[0] {
+			case ' ', '\t', '\r', '\n':
+				continue
+			}
+			return io.MultiReader(bytes.NewReader(b[:]), r), nil
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
 }
 
 // BindJSONValue binds a decoded JSON value into v, which must be a non-nil

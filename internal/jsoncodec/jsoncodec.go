@@ -1,35 +1,90 @@
-// Package jsoncodec holds the process-wide JSON codec.
+// Package jsoncodec holds the process-wide JSON codec that the runtime package
+// and runtime/types share.
 //
-// It is internal so that both the runtime package and runtime/types can share
-// one codec: runtime imports types, so types cannot import runtime.
+// It is internal because runtime imports types, so types cannot import
+// runtime. The runtime package re-exports its symbols, as aliases of the types
+// and one-line wrappers of the functions, so that nothing is defined twice.
 package jsoncodec
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"io"
+)
 
-// Codec mirrors runtime.JSONCodec.
+// Codec encodes and decodes JSON. runtime.JSONCodec is an alias of it.
 type Codec interface {
 	Marshal(v any) ([]byte, error)
 	Unmarshal(data []byte, v any) error
 }
 
-// codec is nil while the encoding/json default is in use.
-var codec Codec
+// Streaming is optionally implemented by a Codec that encodes to and decodes
+// from a stream. runtime.StreamingJSONCodec is an alias of it.
+type Streaming interface {
+	MarshalWrite(w io.Writer, v any) error
+	UnmarshalRead(r io.Reader, v any) error
+}
 
-// Set replaces the codec. nil restores the encoding/json default.
+// Std is encoding/json's json.Marshal and json.Unmarshal.
+// runtime.StdJSONCodec is an alias of it.
+//
+// It deliberately doesn't implement Streaming: a codec that embeds it and
+// overrides Marshal or Unmarshal then encodes and decodes streams through
+// its own methods, via MarshalWrite and UnmarshalRead's fall-through, rather
+// than through encoding/json's Encoder and Decoder promoted from Std.
+type Std struct{}
+
+func (Std) Marshal(v any) ([]byte, error)      { return json.Marshal(v) }
+func (Std) Unmarshal(data []byte, v any) error { return json.Unmarshal(data, v) }
+
+// std is the default codec: Std, plus encoding/json's Encoder and Decoder for
+// streams, so that the default behaviour is encoding/json's throughout.
+type std struct{ Std }
+
+func (std) MarshalWrite(w io.Writer, v any) error  { return json.NewEncoder(w).Encode(v) }
+func (std) UnmarshalRead(r io.Reader, v any) error { return json.NewDecoder(r).Decode(v) }
+
+var _ Streaming = std{}
+
+var codec Codec = std{}
+
+// Set replaces the codec. nil restores the default.
 func Set(c Codec) {
+	if c == nil {
+		c = std{}
+	}
 	codec = c
 }
 
-func Marshal(v any) ([]byte, error) {
-	if codec == nil {
-		return json.Marshal(v)
+// Marshal encodes v with the codec.
+func Marshal(v any) ([]byte, error) { return codec.Marshal(v) }
+
+// Unmarshal decodes data into v with the codec.
+func Unmarshal(data []byte, v any) error { return codec.Unmarshal(data, v) }
+
+// MarshalWrite encodes v to w: with the codec's MarshalWrite when it
+// implements Streaming, otherwise with Marshal followed by a single Write.
+func MarshalWrite(w io.Writer, v any) error {
+	if s, ok := codec.(Streaming); ok {
+		return s.MarshalWrite(w, v)
 	}
-	return codec.Marshal(v)
+	data, err := codec.Marshal(v)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(data)
+	return err
 }
 
-func Unmarshal(data []byte, v any) error {
-	if codec == nil {
-		return json.Unmarshal(data, v)
+// UnmarshalRead decodes v from r: with the codec's UnmarshalRead when it
+// implements Streaming, otherwise by reading r to its end and calling
+// Unmarshal.
+func UnmarshalRead(r io.Reader, v any) error {
+	if s, ok := codec.(Streaming); ok {
+		return s.UnmarshalRead(r, v)
+	}
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
 	}
 	return codec.Unmarshal(data, v)
 }
