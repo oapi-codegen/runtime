@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -560,4 +561,46 @@ func TestDeepObject_InterfaceRoundTrip(t *testing.T) {
 
 	var dst map[string]interface{}
 	assertDeepObjectWireSafe(t, marshaled, "properties", &dst, src)
+}
+
+func TestDeepObject_UUIDFields(t *testing.T) {
+	type UUIDObject struct {
+		ID    uuid.UUID  `json:"id"`
+		Owner *uuid.UUID `json:"owner,omitempty"`
+	}
+	id := uuid.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+	owner := uuid.MustParse("6ba7b811-9dad-11d1-80b4-00c04fd430c8")
+
+	t.Run("uuid values bind", func(t *testing.T) {
+		params := url.Values{}
+		params.Set("p[id]", id.String())
+		params.Set("p[owner]", owner.String())
+
+		var dst UUIDObject
+		err := UnmarshalDeepObject(&dst, "p", params)
+		require.NoError(t, err)
+		assert.Equal(t, UUIDObject{ID: id, Owner: &owner}, dst)
+	})
+
+	t.Run("invalid uuid returns error", func(t *testing.T) {
+		params := url.Values{}
+		params.Set("p[id]", "not-a-uuid")
+
+		var dst UUIDObject
+		err := UnmarshalDeepObject(&dst, "p", params)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid UUID")
+	})
+
+	t.Run("array without TextUnmarshaler is unhandled", func(t *testing.T) {
+		params := url.Values{}
+		params.Set("p[pair]", "a")
+
+		var dst struct {
+			Pair [2]string `json:"pair"`
+		}
+		err := UnmarshalDeepObject(&dst, "p", params)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unhandled type")
+	})
 }

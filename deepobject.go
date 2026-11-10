@@ -289,6 +289,12 @@ func assignPathValues(dst interface{}, pathValues fieldOrValue) error {
 		}
 		iv.Set(dstSlice)
 		return nil
+	case reflect.Array:
+		// Array-backed text types such as uuid.UUID.
+		if tu, ok := v.Interface().(encoding.TextUnmarshaler); ok {
+			return tu.UnmarshalText([]byte(pathValues.value))
+		}
+		return errors.New("unhandled type: " + it.String())
 	case reflect.Struct:
 		// Some special types we care about are structs. Handle them
 		// here. They may be redefined, so we need to do some hoop
@@ -338,7 +344,7 @@ func assignPathValues(dst interface{}, pathValues fieldOrValue) error {
 			dst.Set(reflect.ValueOf(tm))
 			return nil
 		}
-		// For other struct types that implement TextUnmarshaler (e.g. uuid.UUID),
+		// For other struct types that implement TextUnmarshaler,
 		// use that for binding. This comes after the legacy Date/time.Time checks
 		// above which have special fallback format handling.
 		if tu, ok := v.Interface().(encoding.TextUnmarshaler); ok {
