@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"bytes"
 	"encoding"
 	"encoding/base64"
 	"encoding/json"
@@ -33,48 +32,22 @@ type validatedBody interface {
 // case-insensitively, and the body is not decoded a second time.
 //
 // Without a validated value, or when the value cannot be bound into v, the
-// body is decoded with the current JSONCodec (see SetJSONCodec), as a stream
-// when it implements StreamingJSONCodec. With the default codec that is
-// encoding/json's Decoder, so its error behaviour is unchanged. A body that is
-// empty, or only white space, is io.EOF whichever codec is in use, as the
-// Decoder reports it: generated handlers take that as an optional body left
-// out.
+// body is decoded with JSONUnmarshalRead: the current JSONCodec (see
+// SetJSONCodec), as a stream when it implements StreamingJSONCodec. With the
+// default codec that is encoding/json's Decoder, so its error behaviour is
+// unchanged. A body that is empty, or only white space, is io.EOF whichever
+// codec is in use: generated handlers take that as an optional body left out.
 func BindJSONBody(r *http.Request, v any) error {
+	var body io.Reader
 	if r != nil && r.Body != nil {
 		if b, ok := r.Body.(validatedBody); ok {
 			if err := BindJSONValue(b.ValidatedValue(), v); err == nil {
 				return nil
 			}
 		}
-	}
-	body, err := nonEmptyBody(r.Body)
-	if err != nil {
-		return err
+		body = r.Body
 	}
 	return JSONUnmarshalRead(body, v)
-}
-
-// nonEmptyBody returns r positioned at its first byte that isn't JSON white
-// space, or io.EOF when it has none, so that an empty body is io.EOF whichever
-// codec decodes it.
-func nonEmptyBody(r io.Reader) (io.Reader, error) {
-	if r == nil {
-		return nil, io.EOF
-	}
-	var b [1]byte
-	for {
-		n, err := r.Read(b[:])
-		if n == 1 {
-			switch b[0] {
-			case ' ', '\t', '\r', '\n':
-				continue
-			}
-			return io.MultiReader(bytes.NewReader(b[:]), r), nil
-		}
-		if err != nil {
-			return nil, err
-		}
-	}
 }
 
 // BindJSONValue binds a decoded JSON value into v, which must be a non-nil
@@ -113,7 +86,7 @@ var (
 )
 
 // errUnsupportedJSONDestination is returned for destination types the binder
-// does not handle; BindJSONBody then falls back to encoding/json.
+// does not handle; BindJSONBody then decodes the body with the JSONCodec.
 var errUnsupportedJSONDestination = errors.New("unsupported destination type")
 
 func bindJSONValue(value any, dst reflect.Value) error {

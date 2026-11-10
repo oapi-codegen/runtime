@@ -3,6 +3,7 @@ package runtime
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -14,7 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// noEscapeCodec overrides Marshal only, and counts the calls that reach it.
+// noEscapeCodec overrides Marshal to leave HTML unescaped, and counts the
+// calls that reach either method.
 type noEscapeCodec struct {
 	StdJSONCodec
 	marshals, unmarshals *int
@@ -56,6 +58,11 @@ func (c streamingCodec) UnmarshalRead(r io.Reader, v any) error {
 }
 
 var _ StreamingJSONCodec = streamingCodec{}
+
+// errReader fails every Read with err.
+type errReader struct{ err error }
+
+func (r errReader) Read([]byte) (int, error) { return 0, r.err }
 
 // TestSetJSONCodec mutates the process-wide codec, so it must not run in
 // parallel with other tests (they run after all sequential tests finish).
@@ -113,17 +120,26 @@ func TestJSONCodec_Streams(t *testing.T) {
 
 	const in = "<a&b>"
 
+	// encoded is in as the default encodes a body: HTML escaped, trailing newline.
+	var encoded bytes.Buffer
+	require.NoError(t, json.NewEncoder(&encoded).Encode(in))
+
 	t.Run("default is encoding/json's Encoder and Decoder", func(t *testing.T) {
 		var buf bytes.Buffer
 		require.NoError(t, JSONMarshalWrite(&buf, in))
-		var want bytes.Buffer
-		require.NoError(t, json.NewEncoder(&want).Encode(in))
-		assert.Equal(t, want.String(), buf.String(), "HTML escaped, trailing newline")
+		assert.Equal(t, encoded.String(), buf.String())
 
 		var out string
 		require.NoError(t, JSONUnmarshalRead(strings.NewReader(`"x"`), &out))
 		assert.Equal(t, "x", out)
 		assert.ErrorIs(t, JSONUnmarshalRead(strings.NewReader(""), &out), io.EOF)
+	})
+
+	t.Run("StdJSONCodec is the default too", func(t *testing.T) {
+		SetJSONCodec(StdJSONCodec{})
+		var buf bytes.Buffer
+		require.NoError(t, JSONMarshalWrite(&buf, in))
+		assert.Equal(t, encoded.String(), buf.String(), "not the buffered path, which has no newline")
 	})
 
 	t.Run("StdJSONCodec itself doesn't stream", func(t *testing.T) {
@@ -169,6 +185,50 @@ func TestJSONCodec_Streams(t *testing.T) {
 	})
 }
 
+func TestJSONUnmarshalRead_EmptyInput(t *testing.T) {
+	t.Cleanup(func() { SetJSONCodec(nil) })
+
+	t.Run("no value is io.EOF whichever codec is in use", func(t *testing.T) {
+		var unmarshals, reads int
+		for _, codec := range []JSONCodec{
+			nil,
+			noEscapeCodec{marshals: new(int), unmarshals: &unmarshals},
+			streamingCodec{noEscapeCodec: noEscapeCodec{marshals: new(int), unmarshals: &unmarshals}, writes: new(int), reads: &reads},
+		} {
+			SetJSONCodec(codec)
+			var out string
+			assert.ErrorIs(t, JSONUnmarshalRead(nil, &out), io.EOF)
+			assert.ErrorIs(t, JSONUnmarshalRead(strings.NewReader(""), &out), io.EOF)
+			assert.ErrorIs(t, JSONUnmarshalRead(strings.NewReader(" \r\n\t"), &out), io.EOF)
+		}
+		assert.Equal(t, 0, unmarshals, "the codec never saw the empty inputs")
+		assert.Equal(t, 0, reads)
+	})
+
+	t.Run("a read error is returned", func(t *testing.T) {
+		SetJSONCodec(nil)
+		readErr := errors.New("read failed")
+		var out string
+		assert.ErrorIs(t, JSONUnmarshalRead(errReader{readErr}, &out), readErr)
+	})
+
+	t.Run("the input reaches the codec unchanged", func(t *testing.T) {
+		SetJSONCodec(nil)
+		const in = "   {x"
+		var want, got map[string]any
+		wantErr := json.NewDecoder(strings.NewReader(in)).Decode(&want)
+		gotErr := JSONUnmarshalRead(strings.NewReader(in), &got)
+		var wantSyntax, gotSyntax *json.SyntaxError
+		require.ErrorAs(t, wantErr, &wantSyntax)
+		require.ErrorAs(t, gotErr, &gotSyntax)
+		assert.Equal(t, wantSyntax.Offset, gotSyntax.Offset, "leading white space is replayed, not dropped")
+		assert.Equal(t, wantErr.Error(), gotErr.Error())
+
+		require.NoError(t, JSONUnmarshalRead(strings.NewReader("\n\t {\"a\":1}"), &got))
+		assert.Equal(t, map[string]any{"a": 1.0}, got)
+	})
+}
+
 func TestBindJSONBody_Codec(t *testing.T) {
 	t.Cleanup(func() { SetJSONCodec(nil) })
 
@@ -193,6 +253,7 @@ func TestBindJSONBody_Codec(t *testing.T) {
 		assert.ErrorIs(t, BindJSONBody(newRequest(""), &got), io.EOF)
 		assert.ErrorIs(t, BindJSONBody(newRequest(" \r\n\t"), &got), io.EOF)
 		assert.ErrorIs(t, BindJSONBody(&http.Request{}, &got), io.EOF)
+		assert.ErrorIs(t, BindJSONBody(nil, &got), io.EOF)
 		assert.Equal(t, 1, unmarshals, "the codec never saw the empty bodies")
 	})
 }

@@ -7,6 +7,7 @@
 package jsoncodec
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 )
@@ -47,9 +48,11 @@ var _ Streaming = std{}
 
 var codec Codec = std{}
 
-// Set replaces the codec. nil restores the default.
+// Set replaces the codec. nil restores the default, and so does Std itself:
+// it is the default's byte half, and passing it is the natural way to say
+// "encoding/json", not a request for the buffered stream path.
 func Set(c Codec) {
-	if c == nil {
+	if c == nil || c == (Std{}) {
 		c = std{}
 	}
 	codec = c
@@ -77,8 +80,14 @@ func MarshalWrite(w io.Writer, v any) error {
 
 // UnmarshalRead decodes v from r: with the codec's UnmarshalRead when it
 // implements Streaming, otherwise by reading r to its end and calling
-// Unmarshal.
+// Unmarshal. When r is nil or holds no value, nothing or only JSON white
+// space, it returns io.EOF without involving the codec, whose own report of
+// an empty input varies.
 func UnmarshalRead(r io.Reader, v any) error {
+	r, err := nonEmpty(r)
+	if err != nil {
+		return err
+	}
 	if s, ok := codec.(Streaming); ok {
 		return s.UnmarshalRead(r, v)
 	}
@@ -87,4 +96,30 @@ func UnmarshalRead(r io.Reader, v any) error {
 		return err
 	}
 	return codec.Unmarshal(data, v)
+}
+
+// nonEmpty returns io.EOF when r is nil or has only JSON white space before
+// its end, and otherwise r with the bytes read to find that out replayed in
+// front of it, so that the codec sees the input unchanged, a syntax error's
+// offset included.
+func nonEmpty(r io.Reader) (io.Reader, error) {
+	if r == nil {
+		return nil, io.EOF
+	}
+	var read []byte
+	for {
+		var b [1]byte
+		n, err := r.Read(b[:])
+		if n == 1 {
+			read = append(read, b[0])
+			switch b[0] {
+			case ' ', '\t', '\r', '\n':
+				continue
+			}
+			return io.MultiReader(bytes.NewReader(read), r), nil
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
 }
