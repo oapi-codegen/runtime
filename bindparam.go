@@ -15,7 +15,6 @@ package runtime
 
 import (
 	"encoding"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -380,7 +379,7 @@ func bindSplitPartsToDestinationStruct(paramName string, parts []string, explode
 		}
 	}
 	jsonParam := "{" + strings.Join(fields, ",") + "}"
-	err := json.Unmarshal([]byte(jsonParam), dest)
+	err := JSONUnmarshal([]byte(jsonParam), dest)
 	if err != nil {
 		return fmt.Errorf("error binding parameter %s fields: %w", paramName, err)
 	}

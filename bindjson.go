@@ -102,7 +102,7 @@ func bindJSONValue(value any, dst reflect.Value) error {
 	}
 
 	if u := jsonUnmarshalerOf(dst); u != nil {
-		data, err := json.Marshal(value)
+		data, err := JSONMarshal(value)
 		if err != nil {
 			return err
 		}
@@ -295,7 +295,7 @@ func bindQuotedJSONValue(value any, dst reflect.Value) error {
 	if !ok || !dst.CanAddr() {
 		return jsonTypeError(value, dst.Type())
 	}
-	return json.Unmarshal([]byte(s), dst.Addr().Interface())
+	return JSONUnmarshal([]byte(s), dst.Addr().Interface())
 }
 
 func jsonUnmarshalerOf(v reflect.Value) json.Unmarshaler {
