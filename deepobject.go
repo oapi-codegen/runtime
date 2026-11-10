@@ -94,7 +94,7 @@ func MarshalDeepObject(i interface{}, paramName string) (string, error) {
 			return "", nil
 		}
 	}
-	buf, err := json.Marshal(i)
+	buf, err := JSONMarshal(i)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal input to JSON: %w", err)
 	}
