@@ -604,3 +604,37 @@ func TestDeepObject_UUIDFields(t *testing.T) {
 		assert.Contains(t, err.Error(), "unhandled type")
 	})
 }
+
+func TestDeepObject_IntegerOverflow(t *testing.T) {
+	type IntObject struct {
+		I8  int8  `json:"i8"`
+		I32 int32 `json:"i32"`
+	}
+
+	t.Run("values at the bounds of the destination bind", func(t *testing.T) {
+		params := url.Values{}
+		params.Set("p[i8]", "-128")
+		params.Set("p[i32]", "2147483647")
+
+		var dst IntObject
+		err := UnmarshalDeepObject(&dst, "p", params)
+		require.NoError(t, err)
+		assert.Equal(t, IntObject{I8: -128, I32: 2147483647}, dst)
+	})
+
+	for _, tc := range []struct{ field, value string }{
+		{"i8", "128"},
+		{"i8", "-129"},
+		{"i32", "2147483648"},
+	} {
+		t.Run("overflowing "+tc.field+"="+tc.value+" returns error", func(t *testing.T) {
+			params := url.Values{}
+			params.Set("p["+tc.field+"]", tc.value)
+
+			var dst IntObject
+			err := UnmarshalDeepObject(&dst, "p", params)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "overflows")
+		})
+	}
+}
