@@ -5,6 +5,7 @@ import (
 	"mime/multipart"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/oapi-codegen/nullable"
 	"github.com/oapi-codegen/runtime/types"
@@ -247,6 +248,156 @@ func TestMarshalForm(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, k, encoded)
 	}
+}
+
+// TestMarshalFormEncoding covers oapi-codegen issue #2604: a property with an
+// encoding is serialized by its style and explode, rather than in the
+// bracketed default.
+func TestMarshalFormEncoding(t *testing.T) {
+	type object struct {
+		Role string `json:"role"`
+		Age  int    `json:"age"`
+	}
+	type body struct {
+		Email    string            `json:"email,omitempty"`
+		Topic    []string          `json:"topic,omitempty"`
+		OptTopic *[]int            `json:"opt_topic,omitempty"`
+		Object   *object           `json:"object,omitempty"`
+		Map      map[string]string `json:"map,omitempty"`
+		When     *types.Date       `json:"when,omitempty"`
+	}
+	yes, no := true, false
+	topics := body{Email: "jane@example.com", Topic: []string{"news", "a,b c"}}
+	date := types.Date{Time: time.Date(2026, 11, 20, 0, 0, 0, 0, time.UTC)}
+
+	testCases := []struct {
+		name      string
+		body      body
+		encodings map[string]RequestBodyEncoding
+		expected  url.Values
+	}{
+		{
+			name:     "no encoding keeps indexed keys",
+			body:     topics,
+			expected: url.Values{"email": {"jane@example.com"}, "topic[0]": {"news"}, "topic[1]": {"a,b c"}},
+		},
+		{
+			name:      "encoding without style or explode keeps indexed keys",
+			body:      topics,
+			encodings: map[string]RequestBodyEncoding{"topic": {Required: &yes}},
+			expected:  url.Values{"email": {"jane@example.com"}, "topic[0]": {"news"}, "topic[1]": {"a,b c"}},
+		},
+		{
+			name:      "form explode repeats the key",
+			body:      topics,
+			encodings: map[string]RequestBodyEncoding{"topic": {Style: "form", Explode: &yes}},
+			expected:  url.Values{"email": {"jane@example.com"}, "topic": {"news", "a,b c"}},
+		},
+		{
+			name:      "form explodes by default",
+			body:      topics,
+			encodings: map[string]RequestBodyEncoding{"topic": {Style: "form"}},
+			expected:  url.Values{"email": {"jane@example.com"}, "topic": {"news", "a,b c"}},
+		},
+		{
+			name:      "explode alone implies form",
+			body:      topics,
+			encodings: map[string]RequestBodyEncoding{"topic": {Explode: &yes}},
+			expected:  url.Values{"email": {"jane@example.com"}, "topic": {"news", "a,b c"}},
+		},
+		{
+			name:      "form without explode joins with commas",
+			body:      topics,
+			encodings: map[string]RequestBodyEncoding{"topic": {Style: "form", Explode: &no}},
+			expected:  url.Values{"email": {"jane@example.com"}, "topic": {"news,a,b c"}},
+		},
+		{
+			name:      "spaceDelimited does not explode by default",
+			body:      topics,
+			encodings: map[string]RequestBodyEncoding{"topic": {Style: "spaceDelimited"}},
+			expected:  url.Values{"email": {"jane@example.com"}, "topic": {"news a,b c"}},
+		},
+		{
+			name:      "pipeDelimited",
+			body:      topics,
+			encodings: map[string]RequestBodyEncoding{"topic": {Style: "pipeDelimited", Explode: &no}},
+			expected:  url.Values{"email": {"jane@example.com"}, "topic": {"news|a,b c"}},
+		},
+		{
+			name:      "pipeDelimited explode repeats the key",
+			body:      topics,
+			encodings: map[string]RequestBodyEncoding{"topic": {Style: "pipeDelimited", Explode: &yes}},
+			expected:  url.Values{"email": {"jane@example.com"}, "topic": {"news", "a,b c"}},
+		},
+		{
+			name:      "deepObject is the bracketed default",
+			body:      body{Topic: []string{"news"}, Object: &object{Role: "admin", Age: 3}},
+			encodings: map[string]RequestBodyEncoding{"topic": {Style: "deepObject", Explode: &yes}, "object": {Style: "deepObject", Explode: &yes}},
+			expected:  url.Values{"topic[0]": {"news"}, "object[role]": {"admin"}, "object[age]": {"3"}},
+		},
+		{
+			name:      "optional array",
+			body:      body{OptTopic: &[]int{1, 2}},
+			encodings: map[string]RequestBodyEncoding{"opt_topic": {Style: "form", Explode: &yes}},
+			expected:  url.Values{"opt_topic": {"1", "2"}},
+		},
+		{
+			name:      "primitive",
+			body:      body{Email: "jane@example.com", When: &date},
+			encodings: map[string]RequestBodyEncoding{"email": {Style: "form", Explode: &yes}, "when": {Style: "form"}},
+			expected:  url.Values{"email": {"jane@example.com"}, "when": {"2026-11-20"}},
+		},
+		{
+			name:      "exploded object contributes its properties",
+			body:      body{Object: &object{Role: "admin", Age: 3}, Map: map[string]string{"k": "v"}},
+			encodings: map[string]RequestBodyEncoding{"object": {Style: "form", Explode: &yes}, "map": {Style: "form"}},
+			expected:  url.Values{"role": {"admin"}, "age": {"3"}, "k": {"v"}},
+		},
+		{
+			name:      "object without explode",
+			body:      body{Object: &object{Role: "admin", Age: 3}, Map: map[string]string{"k": "v"}},
+			encodings: map[string]RequestBodyEncoding{"object": {Style: "form", Explode: &no}, "map": {Style: "form", Explode: &no}},
+			expected:  url.Values{"object": {"age,3,role,admin"}, "map": {"k,v"}},
+		},
+		{
+			name:      "json content type",
+			body:      body{Topic: []string{"news"}, Object: &object{Role: "admin", Age: 3}},
+			encodings: map[string]RequestBodyEncoding{"object": {ContentType: "application/json"}},
+			expected:  url.Values{"topic[0]": {"news"}, "object": {`{"role":"admin","age":3}`}},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			marshaled, err := MarshalForm(tc.body, tc.encodings)
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, marshaled)
+		})
+	}
+
+	t.Run("wire format", func(t *testing.T) {
+		marshaled, err := MarshalForm(topics, map[string]RequestBodyEncoding{"topic": {Style: "form", Explode: &yes}})
+		require.NoError(t, err)
+		assert.Equal(t, "email=jane%40example.com&topic=news&topic=a%2Cb+c", marshaled.Encode())
+
+		// What we send is what BindForm reads back.
+		var bound body
+		require.NoError(t, BindForm(&bound, marshaled, nil, nil))
+		assert.Equal(t, topics, bound)
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		_, err := MarshalForm(topics, map[string]RequestBodyEncoding{"topic": {Style: "matrix"}})
+		assert.ErrorContains(t, err, "unsupported style 'matrix'")
+
+		_, err = MarshalForm(topics, map[string]RequestBodyEncoding{"topic": {ContentType: "text/csv"}})
+		assert.ErrorContains(t, err, "unsupported encoding")
+
+		type nested struct {
+			Objects []object `json:"objects"`
+		}
+		_, err = MarshalForm(nested{Objects: []object{{}}}, map[string]RequestBodyEncoding{"objects": {Style: "form"}})
+		assert.Error(t, err)
+	})
 }
 
 type fileData struct {
