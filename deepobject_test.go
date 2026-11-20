@@ -107,7 +107,7 @@ func TestDeepObject(t *testing.T) {
 	require.NoError(t, err)
 	// Spaces in values are encoded as '+' per url.QueryEscape (form-encoded
 	// convention, matching the pre-v2.7.0 behavior of url.Values.Encode()).
-	require.EqualValues(t, "p[ab][0]=true&p[ao][0][Foo]=bar&p[ao][0][Is]=true&p[ao][1][Foo]=baz&p[ao][1][Is]=false&p[aop][0][Foo]=a&p[aop][1][Foo]=b&p[aop][1][count]=2&p[as][0]=hello&p[as][1]=world&p[b]=true&p[d]=2020-02-01&p[f]=4.2&p[i]=12&p[m][additional]=1&p[o][ID]=456&p[o][Name]=Joe+Schmoe&p[oas][0]=foo&p[oas][1]=bar&p[ob]=true&p[od]=2020-02-01&p[of]=3.7&p[oi]=5&p[om][additional]=1&p[onas][names][0]=Bill&p[onas][names][1]=Frank&p[oo][ID]=123&p[oo][Name]=Marcin+Romaszewicz", marshaled)
+	require.EqualValues(t, "p[ab][0]=true&p[ao][0][Foo]=bar&p[ao][0][Is]=true&p[ao][1][Foo]=baz&p[ao][1][Is]=false&p[aop][0][Foo]=a&p[aop][1][Foo]=b&p[aop][1][count]=2&p[as][0]=hello&p[as][1]=world&p[b]=true&p[d]=2020-02-01&p[f]=4.2&p[i]=12&p[m][additional]=1&p[o][ID]=456&p[o][Name]=Joe%20Schmoe&p[oas][0]=foo&p[oas][1]=bar&p[ob]=true&p[od]=2020-02-01&p[of]=3.7&p[oi]=5&p[om][additional]=1&p[onas][names][0]=Bill&p[onas][names][1]=Frank&p[oo][ID]=123&p[oo][Name]=Marcin%20Romaszewicz", marshaled)
 
 	// Use url.ParseQuery for the round-trip — it decodes percent-escapes and
 	// '+' back to literal characters, matching what a real HTTP server does.

@@ -39,8 +39,10 @@ type QueryEncoder interface {
 
 // NetURLQueryEncoder preserves Go's net/url behavior, encoding a space as '+'.
 // This matches the application/x-www-form-urlencoded convention that browsers
-// use for HTML forms. It is the default encoder, so existing generated clients
-// are unaffected. Note that many, but not all, servers accept '+' as a space.
+// use for HTML forms. It was the default encoder before v1.10.0. Note that
+// many, but not all, servers accept '+' as a space; set
+// runtime.DefaultQueryEncoder to a NetURLQueryEncoder to restore the old
+// behavior.
 type NetURLQueryEncoder struct{}
 
 func (NetURLQueryEncoder) EscapeQueryValue(value string, allowReserved bool) string {
@@ -55,8 +57,8 @@ func (NetURLQueryEncoder) EscapeQueryValue(value string, allowReserved bool) str
 // RFC3986QueryEncoder encodes a space as %20 rather than '+', for strict RFC
 // 3986 compliance. Some servers (for example, OData endpoints that expect
 // filters such as ?filter=name%20eq%20'x') reject '+'-encoded spaces with 400
-// Bad Request. Set runtime.DefaultQueryEncoder to an RFC3986QueryEncoder to opt
-// in.
+// Bad Request, while servers that accept '+' as a space also accept %20. It is
+// the default encoder.
 //
 // The +->%20 rewrite is lossless: url.QueryEscape encodes a literal '+' in the
 // input as %2B, so any '+' remaining in its output can only be a space.
@@ -70,8 +72,8 @@ func (RFC3986QueryEncoder) EscapeQueryValue(value string, allowReserved bool) st
 }
 
 // DefaultQueryEncoder is the QueryEncoder used by all generated clients to
-// escape query parameters. It defaults to NetURLQueryEncoder for backwards
-// compatibility. Set it once during program initialization; like
-// http.DefaultClient, it is not safe to mutate concurrently with in-flight
-// requests.
-var DefaultQueryEncoder QueryEncoder = NetURLQueryEncoder{}
+// escape query parameters. It defaults to RFC3986QueryEncoder; before v1.10.0
+// the default was NetURLQueryEncoder. Set it once during program
+// initialization; like http.DefaultClient, it is not safe to mutate
+// concurrently with in-flight requests.
+var DefaultQueryEncoder QueryEncoder = RFC3986QueryEncoder{}

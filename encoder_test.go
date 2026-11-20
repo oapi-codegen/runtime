@@ -22,8 +22,8 @@ import (
 
 func TestDefaultQueryEncoder(t *testing.T) {
 	// The default encoder must not have been changed by any other test.
-	assert.IsType(t, NetURLQueryEncoder{}, DefaultQueryEncoder,
-		"DefaultQueryEncoder should default to NetURLQueryEncoder")
+	assert.IsType(t, RFC3986QueryEncoder{}, DefaultQueryEncoder,
+		"DefaultQueryEncoder should default to RFC3986QueryEncoder")
 
 	// withQueryEncoder temporarily installs enc, restoring the previous
 	// encoder when the test finishes.
@@ -34,7 +34,7 @@ func TestDefaultQueryEncoder(t *testing.T) {
 		t.Cleanup(func() { DefaultQueryEncoder = prev })
 	}
 
-	t.Run("net/url encoder keeps + for spaces (default)", func(t *testing.T) {
+	t.Run("net/url encoder keeps + for spaces", func(t *testing.T) {
 		withQueryEncoder(t, NetURLQueryEncoder{})
 
 		result, err := StyleParamWithLocation("form", false, "filter", ParamLocationQuery, "name eq 'x'")
@@ -42,7 +42,7 @@ func TestDefaultQueryEncoder(t *testing.T) {
 		assert.EqualValues(t, "filter=name+eq+%27x%27", result)
 	})
 
-	t.Run("RFC 3986 encoder uses %20 for spaces", func(t *testing.T) {
+	t.Run("RFC 3986 encoder uses %20 for spaces (default)", func(t *testing.T) {
 		withQueryEncoder(t, RFC3986QueryEncoder{})
 
 		result, err := StyleParamWithLocation("form", false, "filter", ParamLocationQuery, "name eq 'x'")
