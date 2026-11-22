@@ -531,11 +531,15 @@ func BindQueryParameterWithOptions(style string, explode bool, required bool, pa
 				// try to bind field by field.
 				var fieldsPresent bool
 				fieldsPresent, err = bindParamsToExplodedObject(paramName, queryParams, output)
-				// If no fields were set, and there is no error, we will not fall
-				// through to assign the destination. An absent required
-				// parameter is an error, matching the slice and primitive cases
-				// above; this also covers scalar struct types such as
-				// types.Date and time.Time.
+				// A field which is present but can't be bound is an error,
+				// and must not be mistaken for an absent parameter.
+				if err != nil {
+					return err
+				}
+				// If no fields were set, we will not fall through to assign
+				// the destination. An absent required parameter is an error,
+				// matching the slice and primitive cases above; this also
+				// covers scalar struct types such as types.Date and time.Time.
 				if !fieldsPresent {
 					if required {
 						return &RequiredParameterError{ParamName: paramName}
@@ -778,6 +782,11 @@ func BindRawQueryParameter(style string, explode bool, required bool, paramName 
 			case reflect.Struct:
 				var fieldsPresent bool
 				fieldsPresent, err = bindParamsToExplodedObject(paramName, queryParams, output)
+				// A field which is present but can't be bound is an error,
+				// and must not be mistaken for an absent parameter.
+				if err != nil {
+					return err
+				}
 				// An absent required parameter is an error, matching the slice
 				// and primitive cases above; this also covers scalar struct
 				// types such as types.Date and time.Time.

@@ -1906,3 +1906,79 @@ func TestRoundTripPathParameter(t *testing.T) {
 		})
 	}
 }
+
+// A property of an exploded form object which is present in the query string,
+// but can't be bound, is an error. It used to be reported as though the whole
+// parameter were absent: silently for an optional parameter, and as a
+// RequiredParameterError for a required one.
+// https://github.com/oapi-codegen/runtime/issues/193
+func TestBindExplodedObjectFieldErrors(t *testing.T) {
+	type QueryFilters struct {
+		Limit  *int    `json:"limit,omitempty"`
+		Cursor *string `json:"cursor,omitempty"`
+	}
+
+	// Generated servers reach the exploded object binder through either of
+	// these, so each case runs against both.
+	binders := map[string]func(required bool, rawQuery string, dest interface{}) error{
+		"BindQueryParameter": func(required bool, rawQuery string, dest interface{}) error {
+			values, err := url.ParseQuery(rawQuery)
+			require.NoError(t, err)
+			return BindQueryParameter("form", true, required, "queryFilters", values, dest)
+		},
+		"BindRawQueryParameter": func(required bool, rawQuery string, dest interface{}) error {
+			return BindRawQueryParameter("form", true, required, "queryFilters", rawQuery, dest)
+		},
+	}
+
+	badQueries := map[string]string{
+		"value which does not parse":      "limit=abc",
+		"primitive specified twice":       "limit=1&limit=2",
+		"bad value beside a good one":     "cursor=xyz&limit=abc",
+		"good value before a bad one":     "limit=1&cursor=a&cursor=b",
+		"unrelated arguments are ignored": "other=1&limit=abc",
+	}
+
+	for binderName, bind := range binders {
+		for name, rawQuery := range badQueries {
+			t.Run(binderName+"/optional/"+name, func(t *testing.T) {
+				var dst *QueryFilters
+				err := bind(false, rawQuery, &dst)
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "queryFilters")
+				assert.Nil(t, dst)
+			})
+
+			t.Run(binderName+"/required/"+name, func(t *testing.T) {
+				var dst QueryFilters
+				err := bind(true, rawQuery, &dst)
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "queryFilters")
+				var requiredErr *RequiredParameterError
+				assert.NotErrorAs(t, err, &requiredErr)
+			})
+		}
+
+		t.Run(binderName+"/optional/absent is not an error", func(t *testing.T) {
+			var dst *QueryFilters
+			require.NoError(t, bind(false, "other=1", &dst))
+			assert.Nil(t, dst)
+		})
+
+		t.Run(binderName+"/required/absent is a RequiredParameterError", func(t *testing.T) {
+			var dst QueryFilters
+			err := bind(true, "other=1", &dst)
+			var requiredErr *RequiredParameterError
+			require.ErrorAs(t, err, &requiredErr)
+			assert.Equal(t, "queryFilters", requiredErr.ParamName)
+		})
+
+		t.Run(binderName+"/valid fields still bind", func(t *testing.T) {
+			var dst *QueryFilters
+			require.NoError(t, bind(false, "limit=5&cursor=xyz", &dst))
+			require.NotNil(t, dst)
+			assert.Equal(t, 5, *dst.Limit)
+			assert.Equal(t, "xyz", *dst.Cursor)
+		})
+	}
+}
