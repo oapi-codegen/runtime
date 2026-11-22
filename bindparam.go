@@ -943,6 +943,17 @@ func bindParamsToExplodedObject(paramName string, values url.Values, dest interf
 		// At this point, we look up field name in the parameter list.
 		fieldVal, found := values[fieldName]
 		if found {
+			// An array property of an exploded object is serialized the same
+			// way as a top level exploded array: the property name repeats
+			// once per element.
+			if isExplodedObjectArrayField(fieldT.Type) {
+				err := bindExplodedObjectArrayField(fieldVal, v.Field(i))
+				if err != nil {
+					return false, fmt.Errorf("could not bind query arg '%s' to request object: %s'", paramName, err)
+				}
+				fieldsPresent = true
+				continue
+			}
 			if len(fieldVal) != 1 {
 				return false, fmt.Errorf("field '%s' specified multiple times for param '%s'", fieldName, paramName)
 			}
@@ -954,6 +965,43 @@ func bindParamsToExplodedObject(paramName string, values url.Values, dest interf
 		}
 	}
 	return fieldsPresent, nil
+}
+
+// isExplodedObjectArrayField reports whether a field of an exploded object
+// binds as an array, taking one element from each occurrence of its name in
+// the query string. That is any slice, or pointer to a slice, apart from the
+// ones which bind from a single string: byte slices, and types which do their
+// own parsing via Binder or encoding.TextUnmarshaler.
+func isExplodedObjectArrayField(t reflect.Type) bool {
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Slice || isByteSlice(t) {
+		return false
+	}
+	pt := reflect.PointerTo(t)
+	return !pt.Implements(reflect.TypeFor[Binder]()) &&
+		!pt.Implements(reflect.TypeFor[encoding.TextUnmarshaler]())
+}
+
+// bindExplodedObjectArrayField binds one query string value per element into
+// field, which must satisfy isExplodedObjectArrayField. A nil pointer field
+// is allocated, and the field is left untouched on error.
+func bindExplodedObjectArrayField(values []string, field reflect.Value) error {
+	t := field.Type()
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	slice := reflect.New(t)
+	if err := bindSplitPartsToDestinationArray(values, slice.Interface()); err != nil {
+		return err
+	}
+	if field.Kind() == reflect.Pointer {
+		field.Set(slice)
+	} else {
+		field.Set(slice.Elem())
+	}
+	return nil
 }
 
 // indirect

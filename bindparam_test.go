@@ -17,8 +17,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"net"
 	"net/url"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -867,6 +869,128 @@ func TestBindParamsToExplodedObject(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, fieldsPresent)
 	assert.EqualValues(t, &now, optDstTime.Time)
+}
+
+// explodedObjectTags binds from a single string even though it is a slice.
+type explodedObjectTags []string
+
+func (e *explodedObjectTags) Bind(src string) error {
+	*e = strings.Split(src, "|")
+	return nil
+}
+
+// explodedObjectWords is a slice which parses itself from a single string.
+type explodedObjectWords []string
+
+func (e *explodedObjectWords) UnmarshalText(text []byte) error {
+	*e = strings.Fields(string(text))
+	return nil
+}
+
+func TestIsExplodedObjectArrayField(t *testing.T) {
+	assert.True(t, isExplodedObjectArrayField(reflect.TypeFor[[]string]()))
+	assert.True(t, isExplodedObjectArrayField(reflect.TypeFor[*[]int]()))
+
+	assert.False(t, isExplodedObjectArrayField(reflect.TypeFor[string]()))
+	assert.False(t, isExplodedObjectArrayField(reflect.TypeFor[*int]()))
+	assert.False(t, isExplodedObjectArrayField(reflect.TypeFor[[]byte]()))
+	assert.False(t, isExplodedObjectArrayField(reflect.TypeFor[net.IP]()))
+	assert.False(t, isExplodedObjectArrayField(reflect.TypeFor[explodedObjectTags]()))
+	assert.False(t, isExplodedObjectArrayField(reflect.TypeFor[*explodedObjectTags]()))
+	assert.False(t, isExplodedObjectArrayField(reflect.TypeFor[explodedObjectWords]()))
+}
+
+// An array property of an exploded form object repeats its name once per
+// element, like a top level exploded array does.
+// https://github.com/oapi-codegen/runtime/issues/193
+func TestBindExplodedObjectArrayFields(t *testing.T) {
+	type QueryFilters struct {
+		Limit   *int               `json:"limit,omitempty"`
+		OrderBy *[]string          `json:"orderBy,omitempty"`
+		IDs     []int              `json:"ids,omitempty"`
+		Tags    explodedObjectTags `json:"tags,omitempty"`
+	}
+
+	// Generated servers reach the exploded object binder through either of
+	// these, so each case runs against both.
+	binders := map[string]func(rawQuery string, dest interface{}) error{
+		"BindQueryParameter": func(rawQuery string, dest interface{}) error {
+			values, err := url.ParseQuery(rawQuery)
+			require.NoError(t, err)
+			return BindQueryParameter("form", true, false, "queryFilters", values, dest)
+		},
+		"BindRawQueryParameter": func(rawQuery string, dest interface{}) error {
+			return BindRawQueryParameter("form", true, false, "queryFilters", rawQuery, dest)
+		},
+	}
+
+	limit := 5
+	testCases := []struct {
+		name     string
+		rawQuery string
+		expected QueryFilters
+	}{
+		{
+			name:     "multiple values",
+			rawQuery: "orderBy=foo&orderBy=bar",
+			expected: QueryFilters{OrderBy: &[]string{"foo", "bar"}},
+		},
+		{
+			name:     "single value",
+			rawQuery: "orderBy=foo",
+			expected: QueryFilters{OrderBy: &[]string{"foo"}},
+		},
+		{
+			name:     "alongside a primitive property",
+			rawQuery: "limit=5&orderBy=foo&orderBy=bar",
+			expected: QueryFilters{Limit: &limit, OrderBy: &[]string{"foo", "bar"}},
+		},
+		{
+			name:     "commas are not delimiters",
+			rawQuery: "orderBy=foo,bar&orderBy=baz",
+			expected: QueryFilters{OrderBy: &[]string{"foo,bar", "baz"}},
+		},
+		{
+			name:     "non-pointer slice of integers",
+			rawQuery: "ids=3&ids=1&ids=2",
+			expected: QueryFilters{IDs: []int{3, 1, 2}},
+		},
+		{
+			name:     "Binder slice binds from one string",
+			rawQuery: "tags=a|b",
+			expected: QueryFilters{Tags: explodedObjectTags{"a", "b"}},
+		},
+	}
+
+	for binderName, bind := range binders {
+		for _, tc := range testCases {
+			t.Run(binderName+"/"+tc.name, func(t *testing.T) {
+				var dst *QueryFilters
+				require.NoError(t, bind(tc.rawQuery, &dst))
+				require.NotNil(t, dst)
+				assert.Equal(t, tc.expected, *dst)
+			})
+		}
+	}
+
+	t.Run("element which does not parse", func(t *testing.T) {
+		var dst QueryFilters
+		_, err := bindParamsToExplodedObject("queryFilters", url.Values{"ids": {"1", "two"}}, &dst)
+		require.Error(t, err)
+		assert.Nil(t, dst.IDs)
+	})
+
+	t.Run("repeated primitive property is still an error", func(t *testing.T) {
+		var dst QueryFilters
+		_, err := bindParamsToExplodedObject("queryFilters", url.Values{"limit": {"1", "2"}}, &dst)
+		assert.EqualError(t, err, "field 'limit' specified multiple times for param 'queryFilters'")
+	})
+
+	t.Run("repeated Binder slice is still an error", func(t *testing.T) {
+		var dst QueryFilters
+		_, err := bindParamsToExplodedObject("queryFilters", url.Values{"tags": {"a", "b"}}, &dst)
+		assert.EqualError(t, err, "field 'tags' specified multiple times for param 'queryFilters'")
+	})
 }
 
 func TestFindRawQueryParam(t *testing.T) {
