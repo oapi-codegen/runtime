@@ -914,3 +914,49 @@ func TestStyleParamNestedStructError(t *testing.T) {
 	assert.Contains(t, err.Error(), "cannot serialize nested object of type runtime.Header")
 	assert.Contains(t, err.Error(), "content: application/json")
 }
+
+// TestStyleParamNestedArrayError covers oapi-codegen issue #2109: like
+// nested objects, an array inside a styled object (or inside another array)
+// has no defined wire format, so it must fail with an error that points at
+// the alternatives instead of a bare "unsupported type".
+func TestStyleParamNestedArrayError(t *testing.T) {
+	type Currency string
+	type Request struct {
+		ID         string     `json:"id"`
+		Currencies []Currency `json:"currencies"`
+	}
+
+	const want = "cannot serialize nested array of type []runtime.Currency"
+
+	t.Run("struct field", func(t *testing.T) {
+		for _, style := range []string{"form", "simple", "label", "matrix"} {
+			for _, explode := range []bool{true, false} {
+				_, err := StyleParamWithLocation(style, explode, "request", ParamLocationQuery, Request{})
+				require.Error(t, err, "style %s explode %v", style, explode)
+				assert.Contains(t, err.Error(), want)
+				assert.Contains(t, err.Error(), "content: application/json")
+			}
+		}
+	})
+
+	t.Run("map value", func(t *testing.T) {
+		_, err := StyleParamWithLocation("form", true, "request", ParamLocationQuery,
+			map[string][]Currency{"currencies": {"SEK"}})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), want)
+	})
+
+	t.Run("array of arrays", func(t *testing.T) {
+		_, err := StyleParamWithLocation("form", true, "request", ParamLocationQuery,
+			[][]Currency{{"SEK"}})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), want)
+	})
+
+	t.Run("deepObject still serializes arrays", func(t *testing.T) {
+		result, err := StyleParamWithLocation("deepObject", true, "request", ParamLocationQuery,
+			Request{ID: "x", Currencies: []Currency{"SEK", "EUR"}})
+		require.NoError(t, err)
+		assert.Equal(t, "request[currencies][0]=SEK&request[currencies][1]=EUR&request[id]=x", result)
+	})
+}

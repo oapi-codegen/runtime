@@ -517,6 +517,14 @@ func primitiveToString(value interface{}) (string, error) {
 					"cannot serialize nested object of type %s: style-based parameter serialization ('style'/'schema') is only defined for primitives, arrays, and flat objects; declare the parameter with 'content: application/json' instead, or map the schema to a Go type implementing fmt.Stringer",
 					reflect.TypeOf(value).String())
 			}
+			if (kind == reflect.Slice || kind == reflect.Array) && !isByteSlice(t) {
+				// An array nested inside a styled object or array. Like
+				// nested objects, OpenAPI leaves this undefined, so there
+				// is no wire format we could produce here.
+				return "", fmt.Errorf(
+					"cannot serialize nested array of type %s: style-based parameter serialization ('style'/'schema') is only defined for primitives, arrays of primitives, and flat objects; declare the parameter with 'content: application/json' or 'style: deepObject' instead, or map the schema to a Go type implementing fmt.Stringer",
+					reflect.TypeOf(value).String())
+			}
 			return "", fmt.Errorf("unsupported type %s", reflect.TypeOf(value).String())
 		}
 
