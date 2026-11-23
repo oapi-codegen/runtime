@@ -15,12 +15,18 @@ package runtime
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"math"
+	"math/big"
+	"net"
+	"net/netip"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/oapi-codegen/nullable"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -348,4 +354,190 @@ func TestBindQueryParameter_NullableSliceDestination(t *testing.T) {
 			})
 		})
 	}
+}
+
+// selfParsingSlice, selfParsingStruct and selfParsingMap implement Binder on
+// kinds which have no built in conversion from a string.
+type selfParsingSlice []string
+
+func (s *selfParsingSlice) Bind(src string) error {
+	if src == "" {
+		return errors.New("empty")
+	}
+	*s = strings.Split(src, "|")
+	return nil
+}
+
+type selfParsingStruct struct{ Value string }
+
+func (s *selfParsingStruct) Bind(src string) error {
+	s.Value = src
+	return nil
+}
+
+type selfParsingMap map[string]string
+
+func (m *selfParsingMap) Bind(src string) error {
+	k, v, _ := strings.Cut(src, "=")
+	*m = selfParsingMap{k: v}
+	return nil
+}
+
+// textSlice and textStruct implement encoding.TextUnmarshaler instead.
+type textSlice []string
+
+func (s *textSlice) UnmarshalText(text []byte) error {
+	*s = strings.Fields(string(text))
+	return nil
+}
+
+type textStruct struct{ X, Y string }
+
+func (s *textStruct) UnmarshalText(text []byte) error {
+	x, y, ok := strings.Cut(string(text), ":")
+	if !ok {
+		return errors.New("expected x:y")
+	}
+	s.X, s.Y = x, y
+	return nil
+}
+
+// Types which no built in conversion can handle parse themselves, through
+// Binder or encoding.TextUnmarshaler, whether or not they sit behind the
+// pointer of an optional field.
+// https://github.com/oapi-codegen/runtime/issues/196
+func TestBindStringToObject_SelfParsingTypes(t *testing.T) {
+	t.Run("Binder slice", func(t *testing.T) {
+		var dst selfParsingSlice
+		require.NoError(t, BindStringToObject("a|b", &dst))
+		assert.Equal(t, selfParsingSlice{"a", "b"}, dst)
+
+		var opt *selfParsingSlice
+		require.NoError(t, BindStringToObject("a|b", &opt))
+		require.NotNil(t, opt)
+		assert.Equal(t, selfParsingSlice{"a", "b"}, *opt)
+	})
+
+	t.Run("Binder struct", func(t *testing.T) {
+		var dst selfParsingStruct
+		require.NoError(t, BindStringToObject("x", &dst))
+		assert.Equal(t, selfParsingStruct{Value: "x"}, dst)
+
+		var opt *selfParsingStruct
+		require.NoError(t, BindStringToObject("x", &opt))
+		require.NotNil(t, opt)
+		assert.Equal(t, selfParsingStruct{Value: "x"}, *opt)
+	})
+
+	t.Run("Binder map", func(t *testing.T) {
+		var opt *selfParsingMap
+		require.NoError(t, BindStringToObject("k=v", &opt))
+		require.NotNil(t, opt)
+		assert.Equal(t, selfParsingMap{"k": "v"}, *opt)
+	})
+
+	t.Run("Binder error is returned", func(t *testing.T) {
+		var opt *selfParsingSlice
+		assert.EqualError(t, BindStringToObject("", &opt), "empty")
+	})
+
+	t.Run("TextUnmarshaler slice", func(t *testing.T) {
+		var dst textSlice
+		require.NoError(t, BindStringToObject("a b", &dst))
+		assert.Equal(t, textSlice{"a", "b"}, dst)
+
+		var opt *textSlice
+		require.NoError(t, BindStringToObject("a b", &opt))
+		require.NotNil(t, opt)
+		assert.Equal(t, textSlice{"a", "b"}, *opt)
+	})
+
+	t.Run("TextUnmarshaler struct", func(t *testing.T) {
+		var dst textStruct
+		require.NoError(t, BindStringToObject("1:2", &dst))
+		assert.Equal(t, textStruct{X: "1", Y: "2"}, dst)
+
+		var opt *textStruct
+		require.NoError(t, BindStringToObject("1:2", &opt))
+		require.NotNil(t, opt)
+		assert.Equal(t, textStruct{X: "1", Y: "2"}, *opt)
+	})
+
+	t.Run("TextUnmarshaler error is returned", func(t *testing.T) {
+		var dst textStruct
+		err := BindStringToObject("nope", &dst)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "expected x:y")
+	})
+
+	t.Run("standard library types", func(t *testing.T) {
+		var ip net.IP
+		require.NoError(t, BindStringToObject("192.0.2.1", &ip))
+		assert.True(t, net.IPv4(192, 0, 2, 1).Equal(ip))
+
+		var optIP *net.IP
+		require.NoError(t, BindStringToObject("2001:db8::1", &optIP))
+		require.NotNil(t, optIP)
+		assert.True(t, net.ParseIP("2001:db8::1").Equal(*optIP))
+
+		var addr netip.Addr
+		require.NoError(t, BindStringToObject("192.0.2.1", &addr))
+		assert.Equal(t, netip.MustParseAddr("192.0.2.1"), addr)
+
+		var n big.Int
+		require.NoError(t, BindStringToObject("123456789012345678901234567890", &n))
+		assert.Equal(t, "123456789012345678901234567890", n.String())
+	})
+
+	t.Run("optional TextUnmarshaler array", func(t *testing.T) {
+		var opt *uuid.UUID
+		require.NoError(t, BindStringToObject("5b3a3bc5-1c9e-4e55-9d0e-1c7d5a3b6f10", &opt))
+		require.NotNil(t, opt)
+		assert.Equal(t, uuid.MustParse("5b3a3bc5-1c9e-4e55-9d0e-1c7d5a3b6f10"), *opt)
+	})
+}
+
+// The self parsing fallback is a last resort, so everything which had a built
+// in conversion keeps it, even where the type implements TextUnmarshaler too.
+func TestBindStringToObject_SelfParsingIsLastResort(t *testing.T) {
+	t.Run("time.Time still accepts a bare date", func(t *testing.T) {
+		// time.Time.UnmarshalText only accepts RFC 3339.
+		want := time.Date(2020, 11, 6, 0, 0, 0, 0, time.UTC)
+
+		var dst time.Time
+		require.NoError(t, BindStringToObject("2020-11-06", &dst))
+		assert.True(t, want.Equal(dst))
+
+		var opt *time.Time
+		require.NoError(t, BindStringToObject("2020-11-06", &opt))
+		require.NotNil(t, opt)
+		assert.True(t, want.Equal(*opt))
+	})
+
+	t.Run("time.Time still ignores an empty string", func(t *testing.T) {
+		var dst time.Time
+		require.NoError(t, BindStringToObject("", &dst))
+		assert.True(t, dst.IsZero())
+	})
+
+	t.Run("byte format still decodes base64 into a TextUnmarshaler", func(t *testing.T) {
+		var ip net.IP
+		err := BindStringToObjectWithOptions("wAACAQ==", &ip, BindStringToObjectOptions{Format: "byte"})
+		require.NoError(t, err)
+		assert.Equal(t, net.IP{192, 0, 2, 1}, ip)
+	})
+
+	t.Run("plain slices are still an error", func(t *testing.T) {
+		var dst []string
+		err := BindStringToObject("abc", &dst)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "can not bind to destination of type: slice")
+	})
+
+	t.Run("plain structs are still an error", func(t *testing.T) {
+		var dst struct{ A string }
+		err := BindStringToObject("abc", &dst)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "can not bind to destination of type: struct")
+	})
 }
