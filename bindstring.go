@@ -93,6 +93,16 @@ func BindStringToObjectWithOptions(src string, dst interface{}, opts BindStringT
 
 		v = reflect.Indirect(v)
 		t = v.Type()
+
+		// The Binder check above was made on a **T, which never implements
+		// Binder. Now that we have the T behind an optional field, give it
+		// the same precedence over the built in conversions that it has
+		// when the field is not optional.
+		if v.CanAddr() {
+			if binder, ok := v.Addr().Interface().(Binder); ok {
+				return binder.Bind(src)
+			}
+		}
 	}
 
 	// The resulting type must be settable. reflect will catch issues like
