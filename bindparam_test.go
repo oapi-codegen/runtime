@@ -2106,3 +2106,47 @@ func TestBindExplodedObjectFieldErrors(t *testing.T) {
 		})
 	}
 }
+
+// Properties of an exploded form object bind one at a time through
+// BindStringToObject, with a **T destination for an optional property, so
+// they depend on it finding the parsing logic of the type behind the pointer.
+// https://github.com/oapi-codegen/runtime/issues/196
+func TestBindExplodedObjectSelfParsingFields(t *testing.T) {
+	type Filters struct {
+		Tags     explodedObjectTags   `json:"tags,omitempty"`
+		OptTags  *explodedObjectTags  `json:"optTags,omitempty"`
+		Words    explodedObjectWords  `json:"words,omitempty"`
+		OptWords *explodedObjectWords `json:"optWords,omitempty"`
+		IP       net.IP               `json:"ip,omitempty"`
+		OptIP    *net.IP              `json:"optIp,omitempty"`
+	}
+
+	rawQuery := "tags=a|b&optTags=c|d&words=e+f&optWords=g+h&ip=192.0.2.1&optIp=192.0.2.2"
+
+	check := func(t *testing.T, dst *Filters) {
+		require.NotNil(t, dst)
+		assert.Equal(t, explodedObjectTags{"a", "b"}, dst.Tags)
+		require.NotNil(t, dst.OptTags)
+		assert.Equal(t, explodedObjectTags{"c", "d"}, *dst.OptTags)
+		assert.Equal(t, explodedObjectWords{"e", "f"}, dst.Words)
+		require.NotNil(t, dst.OptWords)
+		assert.Equal(t, explodedObjectWords{"g", "h"}, *dst.OptWords)
+		assert.True(t, net.IPv4(192, 0, 2, 1).Equal(dst.IP))
+		require.NotNil(t, dst.OptIP)
+		assert.True(t, net.IPv4(192, 0, 2, 2).Equal(*dst.OptIP))
+	}
+
+	t.Run("BindQueryParameter", func(t *testing.T) {
+		values, err := url.ParseQuery(rawQuery)
+		require.NoError(t, err)
+		var dst *Filters
+		require.NoError(t, BindQueryParameter("form", true, false, "filters", values, &dst))
+		check(t, dst)
+	})
+
+	t.Run("BindRawQueryParameter", func(t *testing.T) {
+		var dst *Filters
+		require.NoError(t, BindRawQueryParameter("form", true, false, "filters", rawQuery, &dst))
+		check(t, dst)
+	})
+}

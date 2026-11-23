@@ -68,6 +68,11 @@ type BindStringToObjectOptions struct {
 
 // BindStringToObjectWithOptions takes a string, and attempts to assign it to the destination
 // interface via whatever type conversion is necessary, with additional options.
+//
+// A destination which implements Binder parses itself. Otherwise the built in
+// conversions for primitives, times, dates and base64 apply, and a type which
+// none of those can handle is given the chance to parse itself, as a Binder
+// or an encoding.TextUnmarshaler, behind an optional pointer too.
 func BindStringToObjectWithOptions(src string, dst interface{}, opts BindStringToObjectOptions) error {
 	var err error
 
@@ -116,6 +121,9 @@ func BindStringToObjectWithOptions(src string, dst interface{}, opts BindStringT
 		// can not be a fallthrough: the next case is the integer one, and a
 		// source string that parses as an integer would reach v.OverflowInt
 		// on a slice value, which panics.
+		if handled, bindErr := bindStringViaUnmarshaler(src, v); handled {
+			return bindErr
+		}
 		err = fmt.Errorf("can not bind to destination of type: %s", t.Kind())
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		var val int64
@@ -156,12 +164,10 @@ func BindStringToObjectWithOptions(src string, dst interface{}, opts BindStringT
 			v.SetBool(val)
 		}
 	case reflect.Array:
-		if tu, ok := dst.(encoding.TextUnmarshaler); ok {
-			if err := tu.UnmarshalText([]byte(src)); err != nil {
-				return fmt.Errorf("error unmarshaling '%s' text as %T: %w", src, dst, err)
-			}
-
-			return nil
+		// Arrays have no string representation of their own, so a type
+		// such as uuid.UUID has to do its own parsing.
+		if handled, bindErr := bindStringViaUnmarshaler(src, v); handled {
+			return bindErr
 		}
 		fallthrough
 	case reflect.Struct:
@@ -248,6 +254,14 @@ func BindStringToObjectWithOptions(src string, dst interface{}, opts BindStringT
 		}
 		fallthrough
 	default:
+		// Nothing above knows how to parse this type, so let it parse
+		// itself if it is able to. This is deliberately a last resort: the
+		// special cases above keep their existing behavior for types which
+		// also happen to implement one of these interfaces, as time.Time
+		// does.
+		if handled, bindErr := bindStringViaUnmarshaler(src, v); handled {
+			return bindErr
+		}
 		// We've got a bunch of types unimplemented, don't fail silently.
 		err = fmt.Errorf("can not bind to destination of type: %s", t.Kind())
 	}
@@ -255,4 +269,28 @@ func BindStringToObjectWithOptions(src string, dst interface{}, opts BindStringT
 		return fmt.Errorf("error binding string parameter: %w", err)
 	}
 	return nil
+}
+
+// bindStringViaUnmarshaler binds src through the destination's own parsing
+// logic, a Binder or failing that an encoding.TextUnmarshaler, and reports
+// whether the destination had any.
+//
+// v is the destination with its pointers already dereferenced. That matters
+// for an optional field, where the caller holds a **T: the interfaces are
+// implemented by *T, which is only reachable here.
+func bindStringViaUnmarshaler(src string, v reflect.Value) (bool, error) {
+	if !v.CanAddr() {
+		return false, nil
+	}
+	dst := v.Addr().Interface()
+	if binder, ok := dst.(Binder); ok {
+		return true, binder.Bind(src)
+	}
+	if tu, ok := dst.(encoding.TextUnmarshaler); ok {
+		if err := tu.UnmarshalText([]byte(src)); err != nil {
+			return true, fmt.Errorf("error unmarshaling '%s' text as %T: %w", src, dst, err)
+		}
+		return true, nil
+	}
+	return false, nil
 }
